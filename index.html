@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>신한 SOL 개인자산관리 | 지출재무분석 대시보드</title>
+  <!-- Pretendard Font -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+  <!-- ==========================================================================
+       Shinhan SOL Brand Header
+       ========================================================================== -->
+  <header class="sol-header">
+    <div class="sol-header-top">
+      <div class="brand-section">
+        <div class="brand-logo-badge">
+          <span>신한 SOL</span>
+        </div>
+        <div class="brand-text">
+          <h1>개인자산관리 & 매크로 현금흐름 분석</h1>
+          <p>2023–2026+ Multi-Year Personal Wealth Management</p>
+        </div>
+      </div>
+
+      <div class="header-badges">
+        <div class="sol-badge sol-badge-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          <span>한영흠 님 (만 41세)</span>
+        </div>
+        <div class="sol-badge sol-badge-success">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          <span>KCB 신용 1,000점 (상위 0.1%)</span>
+        </div>
+        <div class="sol-badge sol-badge-navy">
+          <span>무부채 (건전성 100%)</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn-sol-ghost" id="btnOpenUpload">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          <span>데이터 관리</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Segmented Tab Navigation Bar (5 Views) -->
+    <div class="sol-tabs-bar">
+      <div class="sol-tabs-inner">
+        <button class="sol-tab-btn active" data-tab="home">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          <span>● 홈 | 종합 재무현황</span>
+        </button>
+        <button class="sol-tab-btn" data-tab="cashflow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          <span>◇ 현금흐름 상세</span>
+        </button>
+        <button class="sol-tab-btn" data-tab="invest">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
+          <span>📈 투자·자산 변동</span>
+        </button>
+        <button class="sol-tab-btn" data-tab="yoy">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+          <span>📊 연도별 재무비교</span>
+        </button>
+        <button class="sol-tab-btn" data-tab="explorer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+          <span>☰ 항목별 지출·조회</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       Sticky Global Filter Strip
+       ========================================================================== -->
+  <section class="sol-filter-strip">
+    <div class="filter-strip-inner">
+      <!-- Year Selector -->
+      <div class="filter-group">
+        <span class="filter-label">연도:</span>
+        <div class="filter-chip-group" id="yearFilterGroup">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Period Filter -->
+      <div class="filter-group">
+        <span class="filter-label">기간:</span>
+        <div class="seg-control" id="periodFilter">
+          <button class="seg-btn active" data-period="ALL">연간 전체</button>
+          <button class="seg-btn" data-period="Q1">1분기</button>
+          <button class="seg-btn" data-period="Q2">2분기</button>
+          <button class="seg-btn" data-period="Q3">3분기</button>
+          <button class="seg-btn" data-period="Q4">4분기</button>
+        </div>
+      </div>
+
+      <!-- Metric Mode Toggle -->
+      <div class="filter-group">
+        <span class="filter-label">집계:</span>
+        <div class="seg-control" id="metricModeFilter">
+          <button class="seg-btn active" data-mode="AVG">월평균 (정규화)</button>
+          <button class="seg-btn" data-mode="TOTAL">기간 총계</button>
+        </div>
+      </div>
+
+      <!-- Entity / Family Quick Filter -->
+      <div class="filter-group">
+        <span class="filter-label">구성원:</span>
+        <div class="seg-control" id="entityFilter">
+          <button class="seg-btn active" data-entity="ALL">전체 가구</button>
+          <button class="seg-btn" data-entity="Shared">공통 생활비</button>
+          <button class="seg-btn" data-entity="Yeongheum">영흠</button>
+          <button class="seg-btn" data-entity="Hyeonjeong">현정</button>
+          <button class="seg-btn" data-entity="Chowon">초원</button>
+        </div>
+      </div>
+
+      <!-- Sanitization Checkboxes -->
+      <div class="filter-group">
+        <label class="checkbox-toggle">
+          <input type="checkbox" id="chkExcludeReimbursement" checked>
+          <span>실질수입 기준 (환급금 분리)</span>
+        </label>
+        <label class="checkbox-toggle">
+          <input type="checkbox" id="chkExcludeReconciliation" checked>
+          <span>자산조정 분리 (차액·자산추가 제외)</span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       Main Dashboard Views Container
+       ========================================================================== -->
+  <main class="sol-main">
+
+    <!-- ==========================================================================
+         TAB 1: [● 홈 | 종합 재무현황]
+         ========================================================================== -->
+    <div class="tab-pane active" id="tab-home">
+      <!-- Shinhan SOL Signature Hero Banner -->
+      <div class="sol-hero">
+        <div class="hero-left">
+          <div class="hero-meta-badge">Shinhan SOL Private Wealth</div>
+          <h2 class="hero-title">한영흠 님의 2023–2026 매크로 종합 재무 리포트</h2>
+          <div class="hero-desc">
+            <div class="hero-desc-item">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+              <span>기록 기간: 2023.01 ~ 2026.10 (46개월 완비)</span>
+            </div>
+            <div class="hero-desc-item">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+              <span>총자산: <strong>14억 1,063만 원</strong> (2023년 대비 +58.8% 성장)</span>
+            </div>
+            <div class="hero-desc-item">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              <span>부채: <strong>0원</strong> (LTV 0% 완전 무차입)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-right">
+          <div class="account-panel">
+            <div class="account-panel-label">
+              <span>선택 기간 순현금흐름 (Free Cash Flow)</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            </div>
+            <div class="account-panel-balance" id="heroBalance">₩0</div>
+            <div class="account-panel-sub" id="heroSavingsBadge">저축·투자 잉여율 0.0%</div>
+            <div class="account-panel-actions">
+              <button class="btn-account-jump" data-jump-tab="cashflow">현금흐름 상세</button>
+              <button class="btn-account-jump" data-jump-tab="invest">투자·자산 변동</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top 5 Executive KPI Cards -->
+      <div class="sol-kpi-grid">
+        <!-- 1. Real Income -->
+        <div class="sol-kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">실질 총수입 (Real Income)</span>
+            <div class="kpi-icon-wrap" style="color:var(--color-primary-500); background:var(--color-primary-50);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+            </div>
+          </div>
+          <div class="kpi-value" id="kpiRealIncomeVal">₩0</div>
+          <div class="kpi-footer">
+            <span id="kpiRealIncomeSub">정규화 월평균</span>
+            <span class="kpi-delta positive">실질소득</span>
+          </div>
+        </div>
+
+        <!-- 2. Net Living Expense -->
+        <div class="sol-kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">순소비지출 (Net Expense)</span>
+            <div class="kpi-icon-wrap" style="color:var(--chart-coral); background:var(--color-error-bg);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+            </div>
+          </div>
+          <div class="kpi-value" id="kpiExpenseVal">₩0</div>
+          <div class="kpi-footer">
+            <span id="kpiExpenseSub">취소/환불 상계완료</span>
+            <span class="kpi-delta neutral">순지출</span>
+          </div>
+        </div>
+
+        <!-- 3. Pure Investment Inflow -->
+        <div class="sol-kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">투자·자산 적립 (Investment)</span>
+            <div class="kpi-icon-wrap" style="color:var(--color-success-fg); background:var(--color-success-bg);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+            </div>
+          </div>
+          <div class="kpi-value" id="kpiInvestVal">₩0</div>
+          <div class="kpi-footer">
+            <span id="kpiInvestSub">순투자 집행</span>
+            <span class="kpi-delta positive">자산형성</span>
+          </div>
+        </div>
+
+        <!-- 4. Net Free Cash Flow / Surplus -->
+        <div class="sol-kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">잉여 현금흐름 (Free Cash)</span>
+            <div class="kpi-icon-wrap" style="color:var(--color-secondary-500); background:#EAEFFC;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path><line x1="12" y1="6" x2="12" y2="8"></line><line x1="12" y1="16" x2="12" y2="18"></line></svg>
+            </div>
+          </div>
+          <div class="kpi-value" id="kpiCashFlowVal">₩0</div>
+          <div class="kpi-footer">
+            <span id="kpiCashFlowSub">수입 - 순지출</span>
+            <span class="kpi-delta positive">저축여력</span>
+          </div>
+        </div>
+
+        <!-- 5. Cashback & Financial Yield -->
+        <div class="sol-kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">캐시백 & 금융수익</span>
+            <div class="kpi-icon-wrap" style="color:var(--chart-amber); background:var(--color-warning-bg);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
+            </div>
+          </div>
+          <div class="kpi-value" id="kpiYieldVal">₩0</div>
+          <div class="kpi-footer">
+            <span id="kpiYieldSub">카드/은행/배당</span>
+            <span class="kpi-delta positive">부가수익</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Visual: Multi-Year Financial Trajectory Combo Chart -->
+      <div class="sol-card">
+        <div class="sol-card-header">
+          <div class="sol-card-title-group">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>
+              2023–2026+ 재무 궤적 콤보 차트 (Cash Flow & Wealth Trajectory)
+            </h2>
+            <p>실질수입(블루) · 순지출(코랄) · 투자집행(에메랄드) 막대 그래프 및 저축·투자율(네이비) 추세선</p>
+          </div>
+          <div class="sol-card-tools">
+            <div class="seg-control" id="homeChartModeFilter">
+              <button class="seg-btn active" data-chart-mode="timeline">월별 타임라인</button>
+              <button class="seg-btn" data-chart-mode="annual">연도별 누적</button>
+            </div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height: 380px;">
+          <canvas id="homeComboChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Net Wealth & Asset Distribution Snapshot -->
+      <div class="sol-card">
+        <div class="sol-card-header">
+          <div class="sol-card-title-group">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+              총자산 포트폴리오 구조 및 성장 스냅샷 (14.11억 원 구조 분석)
+            </h2>
+            <p>2023년(8.88억) → 2024년(11.88억) → 2025년(12.24억) → 2026년(14.11억) 자산 포트폴리오 비중</p>
+          </div>
+        </div>
+        <div class="asset-pill-grid" id="homeAssetSnapshotGrid">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================================================
+         TAB 2: [◇ 현금흐름 상세] (Section 2 Matrix & Waterfall)
+         ========================================================================== -->
+    <div class="tab-pane" id="tab-cashflow">
+      <div class="grid-2col">
+        <!-- Chart 1: Monthly Net Cash Flow Waterfall -->
+        <div class="sol-card">
+          <div class="sol-card-header">
+            <div class="sol-card-title-group">
+              <h2>월간 순현금흐름 잉여/적자 분석 (Net Cash Flow Waterfall)</h2>
+              <p>월별 흑자잉여(+블루) 및 일시적 적자(-코랄) 변동 추이</p>
+            </div>
+          </div>
+          <div class="chart-wrapper" style="height: 280px;">
+            <canvas id="cfWaterfallChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 2: Income Structure Evolution -->
+        <div class="sol-card">
+          <div class="sol-card-header">
+            <div class="sol-card-title-group">
+              <h2>소득 구조 진화 분석 (2023 vs 2024 vs 2025 vs 2026)</h2>
+              <p>급여 · 사업 · 금융/캐시백 · 보전환급 구조적 변화</p>
+            </div>
+          </div>
+          <div class="chart-wrapper" style="height: 280px;">
+            <canvas id="incomeStructureChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Institutional Cash Flow Matrix Table (Upgraded Section 2) -->
+      <div class="sol-card">
+        <div class="sol-card-header">
+          <div class="sol-card-title-group">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+              현금흐름 상세 매트릭스 재무제표 (Section 2.현금흐름현황 통합 뷰)
+            </h2>
+            <p>시트 내 모든 세부 항목별 총계, 월평균 및 연도/월별 실적</p>
+          </div>
+          <div class="sol-card-tools">
+            <div class="search-input-wrap">
+              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" class="search-input" id="cfMatrixSearch" placeholder="항목명 검색 (예: 급여, 식비)">
+            </div>
+            <div class="seg-control" id="cfMatrixViewFilter">
+              <button class="seg-btn active" data-matrix-view="years">연도별 비교</button>
+              <button class="seg-btn" data-matrix-view="months">최신 월별 상세</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sol-table-container">
+          <table class="sol-table" id="cfMatrixTable">
+            <thead id="cfMatrixHeader">
+              <!-- Dynamically populated -->
+            </thead>
+            <tbody id="cfMatrixBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================================================
+         TAB 3: [📈 투자·자산 변동] (Wealth Inflows & Balance Sheet)
+         ========================================================================== -->
+    <div class="tab-pane" id="tab-invest">
+      <div class="grid-2col">
+        <!-- Chart 1: Cumulative & Monthly Investment Trend -->
+        <div class="sol-card">
+          <div class="sol-card-header">
+            <div class="sol-card-title-group">
+              <h2>투자 집행 및 누적 자본 배치 (Capital Deployment)</h2>
+              <p>신한 주거래 우대통장 중심의 투자 집행 (해외투자, CMA, ISA, IRP)</p>
+            </div>
+          </div>
+          <div class="chart-wrapper" style="height: 300px;">
+            <canvas id="investCumulativeChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 2: Asset Portfolio Breakdown -->
+        <div class="sol-card">
+          <div class="sol-card-header">
+            <div class="sol-card-title-group">
+              <h2>2026 자산 포트폴리오 비중 (14.11억 원 세부구성)</h2>
+              <p>실물자산(부동산/동산), 퇴직연금, 보험, 금융예수금</p>
+            </div>
+          </div>
+          <div class="chart-wrapper" style="height: 300px;">
+            <canvas id="assetPortfolioChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Year-End Asset Valuation & Reconciliation Log Table -->
+      <div class="sol-card">
+        <div class="sol-card-header">
+          <div class="sol-card-title-group">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              연말 자산평가 및 잔액조정 내역 (Asset Reconciliation Log)
+            </h2>
+            <p>알리안츠 종신보험 자산추가(+2,809만 원), 상품권/현정자금/초원계좌 정기 차액조정</p>
+          </div>
+        </div>
+
+        <div class="sol-table-container">
+          <table class="sol-table">
+            <thead>
+              <tr>
+                <th>날짜</th>
+                <th>연도</th>
+                <th>조정 항목</th>
+                <th>계좌 / 수단</th>
+                <th class="text-right">조정 금액</th>
+                <th>비고 / 메모</th>
+                <th>분류</th>
+              </tr>
+            </thead>
+            <tbody id="reconTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================================================
+         TAB 4: [📊 연도별 재무비교] (Multi-Year YoY Shift)
+         ========================================================================== -->
+    <div class="tab-pane" id="tab-yoy">
+      <div class="grid-2col">
+        <!-- Chart 1: YoY Macro Category Shift -->
+        <div class="sol-card">
+          <div class="sol-card-header">
+            <div class="sol-card-title-group">
+              <h2>연도별 주요 대분류 월평균 지출 비교 (YoY Normalized Shift)</h2>
+              <p>2023~2026 기록 개월수(12개월 vs 10개월)를 감안한 정규화 월평균 비교</p>
+            </div>
+          </div>
+          <div class="chart-wrapper" style="height: 320px;">
+            <canvas id="yoyMacroShiftChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 2: Household Entity Financial Share -->
+        <div class="sol-card">
+          <div class="sol-card-header">
+            <div class="sol-card-title-group">
+              <h2>가족 구성원별 재무 비중 (Family Entity Share)</h2>
+              <p>공통 생활비 · 영흠(취미/투자) · 현정(자금) · 초원(교육/연금) 지출 배분</p>
+            </div>
+          </div>
+          <div class="chart-wrapper" style="height: 320px;">
+            <canvas id="yoyFamilyEntityChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- YoY Executive Financial Scorecard Table -->
+      <div class="sol-card">
+        <div class="sol-card-header">
+          <div class="sol-card-title-group">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+              연도별 핵심 재무 성과표 (Executive Financial Scorecard)
+            </h2>
+            <p>실질소득, 순소비지출, 잉여현금흐름, 저축률의 다년도 비교 및 변동률</p>
+          </div>
+        </div>
+
+        <div class="sol-table-container">
+          <table class="sol-table">
+            <thead id="yoyScorecardHeader">
+              <!-- Dynamically populated -->
+            </thead>
+            <tbody id="yoyScorecardBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================================================
+         TAB 5: [☰ 항목별 지출·조회] (Category Drilldown & Explorer)
+         ========================================================================== -->
+    <div class="tab-pane" id="tab-explorer">
+      <!-- Drilldown Charts -->
+      <div class="grid-2col">
+        <!-- Donut: Major Categories -->
+        <div class="sol-card">
+          <div class="sol-card-header">
+            <div class="sol-card-title-group">
+              <h2>지출 대분류 점유율 (카테고리 클릭 시 소분류 드릴다운)</h2>
+              <p>식비, 외식비, 구매비, 교통비, 문화여가비, 의료비 등 주요 지출 비중</p>
+            </div>
+          </div>
+          <div class="chart-wrapper" style="height: 280px;">
+            <canvas id="drilldownDonutChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Nested Bar: Subcategories -->
+        <div class="sol-card">
+          <div class="sol-card-header">
+            <div class="sol-card-title-group">
+              <h2 id="drilldownNestedTitle">[식비] 세부 소분류 지출 분석</h2>
+              <p>도넛 차트의 특정 카테고리를 클릭하면 자동으로 세부 항목이 갱신됩니다.</p>
+            </div>
+          </div>
+          <div class="chart-wrapper" style="height: 280px;">
+            <canvas id="drilldownNestedBarChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment & Merchant Ranking -->
+      <div class="grid-2col">
+        <div class="sol-card">
+          <div class="sol-card-header">
+            <div class="sol-card-title-group">
+              <h2>결제수단별 이용 비중 (Payment Channel Share)</h2>
+              <p>신한 통장, KB Liiv Mate, 현대 패밀리카드, 쿠팡와우, Deep Oil 등</p>
+            </div>
+          </div>
+          <div class="chart-wrapper" style="height: 260px;">
+            <canvas id="paymentMethodChart"></canvas>
+          </div>
+        </div>
+
+        <div class="sol-card">
+          <div class="sol-card-header">
+            <div class="sol-card-title-group">
+              <h2>누적 지출 상위 10대 가맹점 (Top 10 Merchants)</h2>
+              <p>이마트, 쿠팡, 트레이더스, 홈플러스 등 주요 생활 소비처</p>
+            </div>
+          </div>
+          <div id="topMerchantsList">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Full-featured Transaction Explorer -->
+      <div class="sol-card">
+        <div class="sol-card-header">
+          <div class="sol-card-title-group">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              통합 거래내역 탐색기 (Transaction Data Explorer)
+            </h2>
+            <p>10,780건 전체 데이터 실시간 검색 및 다차원 필터링</p>
+          </div>
+          <div class="sol-card-tools">
+            <div class="search-input-wrap">
+              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" class="search-input" id="explorerSearch" placeholder="가맹점/메모/분류 검색 (예: 수영장)">
+            </div>
+            <select class="btn-sol-ghost" id="explorerTypeFilter" style="height:32px;">
+              <option value="ALL">타입: 전체</option>
+              <option value="지출">지출만</option>
+              <option value="수입">수입만</option>
+              <option value="이체">이체만</option>
+            </select>
+            <select class="btn-sol-ghost" id="explorerPaymentFilter" style="height:32px;">
+              <option value="ALL">결제수단: 전체</option>
+              <option value="신한 주거래 우대통장(저축예금)">신한 주거래 우대통장</option>
+              <option value="KB국민 Liiv Mate카드">KB Liiv Mate카드</option>
+              <option value="HD현대 패밀리카드">HD현대 패밀리카드</option>
+              <option value="쿠팡 와우 카드">쿠팡 와우 카드</option>
+              <option value="Deep Oil">Deep Oil</option>
+              <option value="하이패스(체크)">하이패스(체크)</option>
+              <option value="생활통장">생활통장</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="sol-table-container">
+          <table class="sol-table">
+            <thead>
+              <tr>
+                <th>날짜</th>
+                <th>타입</th>
+                <th>대분류</th>
+                <th>소분류</th>
+                <th>가맹점/내용</th>
+                <th class="text-right">금액</th>
+                <th>결제수단</th>
+                <th>메모</th>
+              </tr>
+            </thead>
+            <tbody id="explorerTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination-bar">
+          <div>
+            총 <strong id="explorerTotalCount">0건</strong> · 합계 <strong id="explorerTotalSum">₩0</strong>
+          </div>
+          <div class="pagination-controls">
+            <button class="btn-page" id="btnPrevPage">이전</button>
+            <span style="font-weight:700; font-size:12px; margin: 0 8px;" id="explorerPageNum">1 / 1</span>
+            <button class="btn-page" id="btnNextPage">다음</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==========================================================================
+       Modal Dialog: Data Upload / Management
+       ========================================================================== -->
+  <div class="sol-modal-backdrop" id="uploadModal">
+    <div class="sol-modal">
+      <div class="sol-modal-header">
+        <h3>데이터 관리 및 2027+ 확장 업데이트</h3>
+        <button class="btn-close-modal" id="btnCloseModal">&times;</button>
+      </div>
+      <div style="font-size:13px; color:var(--text-secondary); margin-bottom:16px; line-height:1.6;">
+        신규 연도(2027년 이상) 데이터가 추가된 <code>finance_data.json</code> 파일 또는 구글 시트 추출 파일을 드래그하여 업로드하면 대시보드가 즉시 자동 확장되어 갱신됩니다.
+      </div>
+      <div class="dropzone" id="fileDropzone">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary-500)" stroke-width="2" style="margin:0 auto;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <p><strong>클릭하여 파일을 선택</strong>하거나 이곳으로 드래그 앤 드롭하세요</p>
+        <span style="font-size:11px; color:var(--text-tertiary);">지원 포맷: .json (finance_data.json)</span>
+        <input type="file" id="fileInput" accept=".json" style="display:none;">
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts: Local chart.umd.min.js and finance_data.js -->
+  <script src="chart.umd.min.js"></script>
+  <script src="finance_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
