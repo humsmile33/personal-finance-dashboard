@@ -87,24 +87,21 @@
         </div>
       </div>
 
-      <!-- Period Filter -->
+      <!-- Period / Time View Filter (Annotation 3) -->
       <div class="filter-group">
-        <span class="filter-label">기간:</span>
-        <div class="seg-control" id="periodFilter">
-          <button class="seg-btn active" data-period="ALL">연간 전체</button>
-          <button class="seg-btn" data-period="Q1">1분기</button>
-          <button class="seg-btn" data-period="Q2">2분기</button>
-          <button class="seg-btn" data-period="Q3">3분기</button>
-          <button class="seg-btn" data-period="Q4">4분기</button>
+        <span class="filter-label">분석 주기:</span>
+        <div class="seg-control" id="timeViewFilter">
+          <button class="seg-btn active" data-time-view="YEARLY">📅 연도별 (연간 총합)</button>
+          <button class="seg-btn" data-time-view="QUARTERLY">🗓️ 분기별 (분기별 추산)</button>
         </div>
       </div>
 
       <!-- Metric Mode Toggle -->
       <div class="filter-group">
-        <span class="filter-label">집계:</span>
+        <span class="filter-label">금액 기준:</span>
         <div class="seg-control" id="metricModeFilter">
-          <button class="seg-btn active" data-mode="AVG">월평균 (정규화)</button>
-          <button class="seg-btn" data-mode="TOTAL">기간 총계</button>
+          <button class="seg-btn active" data-mode="TOTAL">기간 총계 (실제금액)</button>
+          <button class="seg-btn" data-mode="AVG">월평균 (정규화)</button>
         </div>
       </div>
 
@@ -433,13 +430,35 @@
          TAB 4: [📊 연도별 재무비교] (Multi-Year YoY Shift & Category Drilldown)
          ========================================================================== -->
     <div class="tab-pane" id="tab-yoy">
+      <!-- Tab 4 Analysis Period Mode Switch Bar (Annotation 3) -->
+      <div class="sol-card" style="padding: 12px 20px; margin-bottom: 16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="font-weight:700; font-size:14px; color:var(--color-navy); display:inline-flex; align-items:center; gap:6px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+              비교 주기 단위:
+            </span>
+            <div class="seg-control" id="yoyTimeViewTabs">
+              <button class="seg-btn active" data-time-view="YEARLY">📅 연도별 비교 (연간 총합)</button>
+              <button class="seg-btn" data-time-view="QUARTERLY">🗓️ 분기별 추산 (1Q~4Q 세로막대)</button>
+            </div>
+          </div>
+          <div id="yoyQuarterYearWrapper" style="display:none; align-items:center; gap:8px;">
+            <span style="font-size:13px; font-weight:600; color:var(--color-slate);">분기 대상 연도:</span>
+            <div class="filter-chip-group" id="yoyQuarterYearChips">
+              <!-- Dynamically populated e.g. 2023, 2024, 2025, 2026 -->
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="grid-2col">
         <!-- Chart 1: YoY Macro Category Shift -->
         <div class="sol-card">
           <div class="sol-card-header">
             <div class="sol-card-title-group">
-              <h2>연도별 주요 대분류 월평균 지출 비교 (클릭 시 드릴다운)</h2>
-              <p>2023~2026 정규화 월평균 비교 · 카테고리를 클릭하면 우측 차트에 해당 대분류만 드릴다운되어 연도별 소분류와 증감률이 표시됩니다.</p>
+              <h2 id="yoyMacroShiftTitle">연도별 주요 대분류 지출 비교 (클릭 시 드릴다운)</h2>
+              <p id="yoyMacroShiftSubtitle">연간 총합 비교 · 카테고리를 클릭하면 우측 차트에 해당 대분류만 드릴다운되어 세부 구성과 증감률이 표시됩니다.</p>
             </div>
             <div class="sol-card-tools">
               <span class="sol-badge sol-badge-primary" id="yoySelectedBadge" style="display:none;">선택: 전체</span>
@@ -459,7 +478,7 @@
           <div class="sol-card-header">
             <div class="sol-card-title-group">
               <h2 id="yoyDetailTitle">전체 대분류별 연도별 지출 비중 및 증감률 (YoY 복합차트)</h2>
-              <p id="yoyDetailSubtitle">1레벨 대분류별 연도별 지출 구성(스택 막대) 및 총지출 전년 대비 증감률(선 그래프, 0% 기준선)</p>
+              <p id="yoyDetailSubtitle">1레벨 대분류별 지출 구성(스택 막대) 및 전년 대비 증감률(선 그래프, 0% 기준선)</p>
             </div>
             <div class="sol-card-tools" id="yoyDetailTools">
               <button class="btn-sol-ghost" id="btnResetYoYCategory" style="display:none;">
@@ -478,11 +497,11 @@
       <div class="sol-card">
         <div class="sol-card-header">
           <div class="sol-card-title-group">
-            <h2>
+            <h2 id="yoyScorecardTitle">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
               연도별 핵심 재무 성과표 (Executive Financial Scorecard)
             </h2>
-            <p>실질소득, 순소비지출, 잉여현금흐름, 저축률의 다년도 비교 및 변동률</p>
+            <p id="yoyScorecardSubtitle">실질소득, 순소비지출, 잉여현금흐름, 저축률의 다년도 비교 및 변동률</p>
           </div>
         </div>
 

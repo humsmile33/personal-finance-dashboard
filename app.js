@@ -113,7 +113,9 @@
   const state = {
     selectedYears: ['ALL'], // 'ALL' or array of year strings e.g. ['2025', '2026']
     selectedPeriod: 'ALL',  // 'ALL', 'Q1'..'Q4', '01'..'12'
-    metricMode: 'AVG',      // 'AVG' (월평균 - default for YoY) or 'TOTAL' (총계)
+    timeView: 'YEARLY',     // 'YEARLY' (연도별 총합) or 'QUARTERLY' (분기별 추산)
+    quarterTargetYear: '2026', // Active year for quarterly breakdown
+    metricMode: 'TOTAL',    // 'TOTAL' (기간 총계 - default) or 'AVG' (월평균 정규화)
     familyEntity: 'ALL',    // 'ALL', 'Shared', 'Yeongheum', 'Hyeonjeong', 'Chowon'
     excludeReimbursement: true,  // [✓] 실질수입 기준 (환급금 분리)
     excludeReconciliation: true, // [✓] 자산조정 분리 (자산추가, 차액 제외)
@@ -227,16 +229,24 @@
         const y = btn.getAttribute('data-year');
         if (y === 'ALL') {
           state.selectedYears = ['ALL'];
+          state.quarterTargetYear = '2026';
         } else {
           if (state.selectedYears.includes('ALL')) {
             state.selectedYears = [y];
+            state.quarterTargetYear = y;
           } else {
             // Toggle
             if (state.selectedYears.includes(y)) {
               state.selectedYears = state.selectedYears.filter(x => x !== y);
-              if (state.selectedYears.length === 0) state.selectedYears = ['ALL'];
+              if (state.selectedYears.length === 0) {
+                state.selectedYears = ['ALL'];
+                state.quarterTargetYear = '2026';
+              } else {
+                state.quarterTargetYear = state.selectedYears[state.selectedYears.length - 1];
+              }
             } else {
               state.selectedYears.push(y);
+              state.quarterTargetYear = y;
             }
           }
         }
@@ -286,17 +296,27 @@
       });
     });
 
-    // Period Filter (Full Year / Quarters / Months)
-    document.querySelectorAll('#periodFilter .seg-btn').forEach(btn => {
+    // Period / Time View Filter (연도별 vs 분기별) - Annotation 3
+    function setTimeView(mode) {
+      state.timeView = mode;
+      document.querySelectorAll('#timeViewFilter .seg-btn, #yoyTimeViewTabs .seg-btn').forEach(b => {
+        if (b.getAttribute('data-time-view') === mode) {
+          b.classList.add('active');
+        } else {
+          b.classList.remove('active');
+        }
+      });
+      updateDashboard();
+    }
+
+    document.querySelectorAll('#timeViewFilter .seg-btn, #yoyTimeViewTabs .seg-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('#periodFilter .seg-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.selectedPeriod = btn.getAttribute('data-period');
-        updateDashboard();
+        const mode = btn.getAttribute('data-time-view');
+        setTimeView(mode);
       });
     });
 
-    // Metric Mode Toggle (월평균 / 총계)
+    // Metric Mode Toggle (기간 총계 / 월평균)
     document.querySelectorAll('#metricModeFilter .seg-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('#metricModeFilter .seg-btn').forEach(b => b.classList.remove('active'));
@@ -369,8 +389,13 @@
     if (btnResetYoY) {
       btnResetYoY.addEventListener('click', () => {
         state.yoyCategory = null;
-        renderYoYMacroShiftChart();
-        renderYoYDetailComboChart();
+        if (state.timeView === 'QUARTERLY') {
+          renderQuarterlyMacroShiftChart();
+          renderQuarterlyDetailComboChart();
+        } else {
+          renderYoYMacroShiftChart();
+          renderYoYDetailComboChart();
+        }
       });
     }
 
@@ -1366,12 +1391,57 @@
   // TAB 4: [📊 연도별 재무비교 & 대분류 드릴다운 복합차트] (Annotation 4)
   // ==========================================================================
   function renderTabYoY() {
-    renderYoYMacroShiftChart();
-    renderYoYDetailComboChart();
-    renderYoYScorecardTable();
+    renderYoYTimeViewControls();
+    if (state.timeView === 'QUARTERLY') {
+      renderQuarterlyMacroShiftChart();
+      renderQuarterlyDetailComboChart();
+      renderQuarterlyScorecardTable();
+    } else {
+      renderYoYMacroShiftChart();
+      renderYoYDetailComboChart();
+      renderYoYScorecardTable();
+    }
   }
 
-  // Quick 1-Click Category Filter Chips for YoY Shift
+  // Synchronize Tab 4 Time View Tabs & Target Year Selector (Annotation 3)
+  function renderYoYTimeViewControls() {
+    const tabs = document.querySelectorAll('#yoyTimeViewTabs .seg-btn');
+    tabs.forEach(btn => {
+      if (btn.getAttribute('data-time-view') === state.timeView) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    const wrapper = document.getElementById('yoyQuarterYearWrapper');
+    const chipsContainer = document.getElementById('yoyQuarterYearChips');
+    if (!wrapper || !chipsContainer) return;
+
+    if (state.timeView === 'QUARTERLY') {
+      wrapper.style.display = 'inline-flex';
+      const availYears = window.FINANCE_DATA.metadata.availableYears;
+      const activeYear = state.quarterTargetYear || '2026';
+
+      let html = '';
+      availYears.forEach(y => {
+        const isActive = y === activeYear;
+        html += `<button class="filter-chip ${isActive ? 'active' : ''}" data-target-year="${y}" style="font-size:12px; padding:3px 9px; border-radius:9999px;">${y}년</button>`;
+      });
+      chipsContainer.innerHTML = html;
+
+      chipsContainer.querySelectorAll('button[data-target-year]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.quarterTargetYear = btn.getAttribute('data-target-year');
+          renderTabYoY();
+        });
+      });
+    } else {
+      wrapper.style.display = 'none';
+    }
+  }
+
+  // Quick 1-Click Category Filter Chips for YoY / QoQ Shift
   function renderYoYCategoryChips(categories) {
     const container = document.getElementById('yoyCategoryChips');
     if (!container) return;
@@ -1402,17 +1472,24 @@
         } else {
           state.yoyCategory = cat;
         }
-        renderYoYMacroShiftChart();
-        renderYoYDetailComboChart();
+        if (state.timeView === 'QUARTERLY') {
+          renderQuarterlyMacroShiftChart();
+          renderQuarterlyDetailComboChart();
+        } else {
+          renderYoYMacroShiftChart();
+          renderYoYDetailComboChart();
+        }
       });
     });
   }
 
-  // Left Chart: Macro categories comparison across years (Clickable for drilldown)
+  // Left Chart: Yearly Macro categories comparison (Respects selectedYears and metricMode)
   function renderYoYMacroShiftChart() {
     const ctx = document.getElementById('yoyMacroShiftChart');
     const badgeEl = document.getElementById('yoySelectedBadge');
     const resetBtn = document.getElementById('btnResetYoYCategory');
+    const titleEl = document.getElementById('yoyMacroShiftTitle');
+    const subtitleEl = document.getElementById('yoyMacroShiftSubtitle');
     if (!ctx) return;
 
     if (charts.yoyMacroShift) charts.yoyMacroShift.destroy();
@@ -1421,7 +1498,20 @@
     const activeMap = window.FINANCE_DATA.metadata.activeMonths;
     const txs = window.FINANCE_DATA.transactions;
 
-    // Dynamically derive ALL expense categories present in transactions, sorted by total amount
+    // Respect selected years (Annotation 1)
+    const targetYears = state.selectedYears.includes('ALL') ? availYears : state.selectedYears;
+
+    const isAvg = state.metricMode === 'AVG';
+    const metricLabel = isAvg ? '월평균 (정규화)' : '연간 총합';
+
+    if (titleEl) {
+      titleEl.textContent = `연도별 주요 대분류 지출 비교 (클릭 시 드릴다운)`;
+    }
+    if (subtitleEl) {
+      subtitleEl.textContent = `${targetYears.join(', ')}년 ${metricLabel} 비교 · 카테고리를 클릭하면 우측 차트에 해당 대분류만 드릴다운되어 연도별 소분류와 증감률이 표시됩니다.`;
+    }
+
+    // Derive ALL expense categories present in transactions, sorted by total amount
     const catMap = {};
     txs.filter(t => t.type === '지출').forEach(t => {
       const c = t.category || '기타';
@@ -1429,10 +1519,8 @@
     });
     const categories = Object.keys(catMap).sort((a, b) => catMap[b] - catMap[a]);
 
-    // Render 1-click Category Chips
     renderYoYCategoryChips(categories);
 
-    // Update Badge & Reset Button in header
     if (badgeEl && resetBtn) {
       if (state.yoyCategory) {
         badgeEl.style.display = 'inline-flex';
@@ -1448,18 +1536,17 @@
       }
     }
 
-    const datasets = availYears.map((y, idx) => {
-      const divisor = activeMap[y] || 12;
+    const datasets = targetYears.map((y, idx) => {
+      const divisor = isAvg ? (activeMap[y] || 12) : 1;
       const yTxs = txs.filter(t => t.year === y && t.type === '지출');
 
       const data = categories.map(cat => {
-        const catSum = yTxs.filter(t => t.category === cat).reduce((sum, t) => sum + t.amount, 0);
-        return state.metricMode === 'AVG' ? (-catSum / divisor) : -catSum;
+        const catSum = yTxs.filter(t => t.category === cat).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        return catSum / divisor;
       });
 
-      // Highlight selected category if any
       const bgColors = categories.map(cat => {
-        const baseColor = [COLORS.slate, COLORS.purple, COLORS.coral, COLORS.primary][idx % 4];
+        const baseColor = [COLORS.slate, COLORS.purple, COLORS.coral, COLORS.primary][availYears.indexOf(y) % 4];
         if (state.yoyCategory) {
           return cat === state.yoyCategory ? baseColor : `${baseColor}30`;
         }
@@ -1467,7 +1554,7 @@
       });
 
       return {
-        label: `${y}년 (${state.metricMode === 'AVG' ? '월평균' : '총계'})`,
+        label: `${y}년 (${metricLabel})`,
         data: data,
         backgroundColor: bgColors,
         borderRadius: 4
@@ -1495,7 +1582,7 @@
             const index = points[0].index;
             const clickedCat = categories[index];
             if (state.yoyCategory === clickedCat) {
-              state.yoyCategory = null; // Toggle
+              state.yoyCategory = null;
             } else {
               state.yoyCategory = clickedCat;
             }
@@ -1522,7 +1609,7 @@
     });
   }
 
-  // Right Chart (Annotation 2 & 4): YoY Detail Stacked Bar + Growth Rate Combo Chart
+  // Right Chart: Yearly Detail Stacked Bar + Growth Rate Combo Chart (Annotations 1 & 2)
   function renderYoYDetailComboChart() {
     const ctx = document.getElementById('yoyDetailComboChart');
     const titleEl = document.getElementById('yoyDetailTitle');
@@ -1535,13 +1622,19 @@
     const activeMap = window.FINANCE_DATA.metadata.activeMonths;
     const txs = window.FINANCE_DATA.transactions.filter(t => t.type === '지출');
 
+    // Respect selected years (Annotation 1)
+    const targetYears = state.selectedYears.includes('ALL') ? availYears : state.selectedYears;
+
     const datasets = [];
     const yearlyTotals = {};
     let growthRates = [];
 
+    const isAvg = state.metricMode === 'AVG';
+    const metricLabel = isAvg ? '월평균' : '연간 총합';
+
     if (state.yoyCategory) {
-      // --- Case 1: Specific Category Drilled Down (e.g. '식비') ---
-      if (titleEl) titleEl.textContent = `[${state.yoyCategory}] 연도별 변동 현황 및 소분류 구성 (YoY 복합차트)`;
+      // --- Case 1: Specific Category Drilled Down (e.g. '식비', '구매비') ---
+      if (titleEl) titleEl.textContent = `[${state.yoyCategory}] 연도별 변동 현황 및 소분류 구성 (${metricLabel} YoY 복합차트)`;
       if (subtitleEl) subtitleEl.textContent = `각 연도별 소분류 지출(스택 막대) 및 전년 대비 증감률(선 그래프, 0% 기준선)`;
 
       const catTxs = txs.filter(t => t.category === state.yoyCategory);
@@ -1557,9 +1650,9 @@
       const topSubcats = sortedSubcats.slice(0, 7);
       const hasOther = sortedSubcats.length > 7;
 
-      // Compute total for category per year
-      availYears.forEach(y => {
-        const divisor = (state.metricMode === 'AVG') ? (activeMap[y] || 12) : 1;
+      // Compute total for category per year (Annotation 2: True totals without unexpected dividing)
+      targetYears.forEach(y => {
+        const divisor = isAvg ? (activeMap[y] || 12) : 1;
         const ySum = catTxs.filter(t => t.year === y).reduce((s, t) => s + Math.abs(t.amount), 0);
         yearlyTotals[y] = ySum / divisor;
       });
@@ -1567,8 +1660,8 @@
       // Subcategory Stacked Bars
       topSubcats.forEach((sub, sIdx) => {
         const color = SUBCAT_PALETTE[sIdx % SUBCAT_PALETTE.length];
-        const data = availYears.map(y => {
-          const divisor = (state.metricMode === 'AVG') ? (activeMap[y] || 12) : 1;
+        const data = targetYears.map(y => {
+          const divisor = isAvg ? (activeMap[y] || 12) : 1;
           const sum = catTxs.filter(t => t.year === y && (t.subcategory || '미분류') === sub)
                             .reduce((s, t) => s + Math.abs(t.amount), 0);
           return sum / divisor;
@@ -1589,8 +1682,8 @@
       // Other subcategories if any
       if (hasOther) {
         const otherSubs = new Set(sortedSubcats.slice(7));
-        const otherData = availYears.map(y => {
-          const divisor = (state.metricMode === 'AVG') ? (activeMap[y] || 12) : 1;
+        const otherData = targetYears.map(y => {
+          const divisor = isAvg ? (activeMap[y] || 12) : 1;
           const sum = catTxs.filter(t => t.year === y && otherSubs.has(t.subcategory || '미분류'))
                             .reduce((s, t) => s + Math.abs(t.amount), 0);
           return sum / divisor;
@@ -1608,9 +1701,19 @@
       }
 
       // Growth Rate Line (%) on Secondary Y-Axis
-      growthRates = availYears.map((y, idx) => {
-        if (idx === 0) return null; // First year baseline
-        const prevY = availYears[idx - 1];
+      growthRates = targetYears.map((y, idx) => {
+        if (idx === 0) {
+          const yIdx = availYears.indexOf(y);
+          if (yIdx > 0) {
+            const prevY = availYears[yIdx - 1];
+            const pDivisor = isAvg ? (activeMap[prevY] || 12) : 1;
+            const prevVal = catTxs.filter(t => t.year === prevY).reduce((s, t) => s + Math.abs(t.amount), 0) / pDivisor;
+            const currVal = yearlyTotals[y] || 0;
+            if (prevVal > 0) return ((currVal - prevVal) / prevVal) * 100;
+          }
+          return null;
+        }
+        const prevY = targetYears[idx - 1];
         const prevVal = yearlyTotals[prevY] || 0;
         const currVal = yearlyTotals[y] || 0;
         if (prevVal === 0) return 0;
@@ -1636,10 +1739,9 @@
 
     } else {
       // --- Case 2: All 1-Level Categories Stacked (Default) ---
-      if (titleEl) titleEl.textContent = `전체 대분류별 연도별 지출 비중 및 증감률 (YoY 복합차트)`;
+      if (titleEl) titleEl.textContent = `전체 대분류별 연도별 지출 비중 및 증감률 (${metricLabel} YoY 복합차트)`;
       if (subtitleEl) subtitleEl.textContent = `1레벨 대분류별 연도별 지출 구성(스택 막대) 및 총소비지출 전년 대비 증감률(선 그래프, 0% 기준선)`;
 
-      // Dynamically get ALL expense categories across all transactions
       const catMap = {};
       txs.forEach(t => {
         const c = t.category || '기타';
@@ -1647,18 +1749,16 @@
       });
       const majorCats = Object.keys(catMap).sort((a, b) => catMap[b] - catMap[a]);
 
-      // Compute total spending per year
-      availYears.forEach(y => {
-        const divisor = (state.metricMode === 'AVG') ? (activeMap[y] || 12) : 1;
+      targetYears.forEach(y => {
+        const divisor = isAvg ? (activeMap[y] || 12) : 1;
         const ySum = txs.filter(t => t.year === y).reduce((s, t) => s + Math.abs(t.amount), 0);
         yearlyTotals[y] = ySum / divisor;
       });
 
-      // Major Category Stacked Bars (All 14 categories included!)
       majorCats.forEach(cat => {
         const color = getCategoryColor(cat);
-        const data = availYears.map(y => {
-          const divisor = (state.metricMode === 'AVG') ? (activeMap[y] || 12) : 1;
+        const data = targetYears.map(y => {
+          const divisor = isAvg ? (activeMap[y] || 12) : 1;
           const sum = txs.filter(t => t.year === y && t.category === cat)
                          .reduce((s, t) => s + Math.abs(t.amount), 0);
           return sum / divisor;
@@ -1676,10 +1776,19 @@
         });
       });
 
-      // Total Expenditure YoY Growth Rate Line (%) on Secondary Y-Axis
-      growthRates = availYears.map((y, idx) => {
-        if (idx === 0) return null;
-        const prevY = availYears[idx - 1];
+      growthRates = targetYears.map((y, idx) => {
+        if (idx === 0) {
+          const yIdx = availYears.indexOf(y);
+          if (yIdx > 0) {
+            const prevY = availYears[yIdx - 1];
+            const pDivisor = isAvg ? (activeMap[prevY] || 12) : 1;
+            const prevVal = txs.filter(t => t.year === prevY).reduce((s, t) => s + Math.abs(t.amount), 0) / pDivisor;
+            const currVal = yearlyTotals[y] || 0;
+            if (prevVal > 0) return ((currVal - prevVal) / prevVal) * 100;
+          }
+          return null;
+        }
+        const prevY = targetYears[idx - 1];
         const prevVal = yearlyTotals[prevY] || 0;
         const currVal = yearlyTotals[y] || 0;
         if (prevVal === 0) return 0;
@@ -1704,7 +1813,6 @@
       });
     }
 
-    // Calculate symmetric bounds for yRate to center 0% baseline nicely
     const validRates = growthRates.filter(r => r !== null && !isNaN(r));
     const minR = validRates.length ? Math.min(...validRates) : -25;
     const maxR = validRates.length ? Math.max(...validRates) : 25;
@@ -1713,10 +1821,10 @@
     charts.yoyDetailCombo = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: availYears.map(y => `${y}년`),
+        labels: targetYears.map(y => `${y}년`),
         datasets: datasets
       },
-      plugins: [yoyLinePlugin], // Enables 0% dashed baseline and data value badges!
+      plugins: [yoyLinePlugin],
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -1732,7 +1840,7 @@
                 if (ctx.dataset.yAxisID === 'yRate') {
                   return `${ctx.dataset.label}: ${ctx.raw !== null ? `${ctx.raw > 0 ? '+' : ''}${ctx.raw.toFixed(1)}%` : '-'}`;
                 }
-                const total = yearlyTotals[availYears[ctx.dataIndex]] || 1;
+                const total = yearlyTotals[targetYears[ctx.dataIndex]] || 1;
                 const pct = ((ctx.raw / total) * 100).toFixed(1);
                 return `${ctx.dataset.label}: ${formatKRW(ctx.raw)} (${pct}%)`;
               }
@@ -1762,25 +1870,39 @@
     });
   }
 
+  // Yearly Financial Scorecard Table (Respects selectedYears and metricMode)
   function renderYoYScorecardTable() {
     const tableHeader = document.getElementById('yoyScorecardHeader');
     const tableBody = document.getElementById('yoyScorecardBody');
+    const titleEl = document.getElementById('yoyScorecardTitle');
+    const subtitleEl = document.getElementById('yoyScorecardSubtitle');
     if (!tableHeader || !tableBody) return;
 
     const availYears = window.FINANCE_DATA.metadata.availableYears;
     const allTxs = window.FINANCE_DATA.transactions;
     const activeMap = window.FINANCE_DATA.metadata.activeMonths;
 
+    const targetYears = state.selectedYears.includes('ALL') ? availYears : state.selectedYears;
+
+    const isAvg = state.metricMode === 'AVG';
+    const metricLabel = isAvg ? '정규화 월평균' : '연간 총합';
+
+    if (titleEl) {
+      titleEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>연도별 핵심 재무 성과표 (Executive Financial Scorecard)`;
+    }
+    if (subtitleEl) {
+      subtitleEl.textContent = `${targetYears.join(', ')}년 ${metricLabel} 실질소득, 순소비지출, 잉여현금흐름, 저축률의 다년도 비교 및 변동률`;
+    }
+
     tableHeader.innerHTML = `
       <tr>
         <th>재무 지표</th>
-        ${availYears.map(y => `<th class="text-right">${y}년 (기록: ${activeMap[y]}개월)</th>`).join('')}
+        ${targetYears.map(y => `<th class="text-right">${y}년 (${isAvg ? `월평균/${activeMap[y]}개월` : '연간 총액'})</th>`).join('')}
         <th class="text-right">최근 YoY 변동</th>
       </tr>
     `;
 
-    // Calculate metrics per year
-    const yearlyMetrics = availYears.map(y => {
+    const yearlyMetrics = targetYears.map(y => {
       const yTxs = allTxs.filter(t => t.year === y);
       return calculateMacroMetrics(yTxs);
     });
@@ -1788,22 +1910,22 @@
     const rows = [
       {
         name: '실질 총수입 (Real Income)',
-        getVal: m => state.metricMode === 'AVG' ? m.avgIncome : m.incomeToUse,
+        getVal: m => isAvg ? m.avgIncome : m.incomeToUse,
         isIncome: true
       },
       {
         name: '순소비 지출 (Net Living Expense)',
-        getVal: m => state.metricMode === 'AVG' ? m.avgExpense : m.netLivingExpense,
+        getVal: m => isAvg ? m.avgExpense : m.netLivingExpense,
         isExpense: true
       },
       {
         name: '잉여 현금흐름 (Free Cash Flow)',
-        getVal: m => state.metricMode === 'AVG' ? m.avgNetCashFlow : m.netFreeCashFlow,
+        getVal: m => isAvg ? m.avgNetCashFlow : m.netFreeCashFlow,
         isNet: true
       },
       {
         name: '순투자 적립액 (Pure Investment)',
-        getVal: m => state.metricMode === 'AVG' ? m.avgInvestment : m.pureInvestment,
+        getVal: m => isAvg ? m.avgInvestment : m.pureInvestment,
         isInvest: true
       },
       {
@@ -1812,7 +1934,7 @@
         isRate: true
       },
       {
-        name: '캐시백 및 배당 수익',
+        name: '캐시백 및 금융수익',
         getVal: m => m.financialYieldTotal,
         isIncome: true
       }
@@ -1820,6 +1942,432 @@
 
     tableBody.innerHTML = rows.map(r => {
       const vals = yearlyMetrics.map(m => r.getVal(m));
+      const vPrev = vals[vals.length - 2] || 0;
+      const vCurr = vals[vals.length - 1] || 0;
+      const diff = vCurr - vPrev;
+      const pct = vPrev !== 0 ? (diff / Math.abs(vPrev)) * 100 : 0;
+      const deltaClass = diff >= 0 ? 'positive' : 'negative';
+
+      return `
+        <tr>
+          <td><strong>${r.name}</strong></td>
+          ${vals.map(v => `<td class="text-right font-bold ${r.isIncome ? 'num-income' : r.isExpense ? 'num-expense' : r.isInvest ? 'num-invest' : ''}">${r.isRate ? `${v.toFixed(1)}%` : formatKRW(v)}</td>`).join('')}
+          <td class="text-right">
+            <span class="kpi-delta ${deltaClass}">${diff >= 0 ? '+' : ''}${r.isRate ? `${diff.toFixed(1)}%p` : formatCompactKRW(diff)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)</span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Left Chart: Quarterly Macro Categories Comparison (Annotation 3)
+  function renderQuarterlyMacroShiftChart() {
+    const ctx = document.getElementById('yoyMacroShiftChart');
+    const badgeEl = document.getElementById('yoySelectedBadge');
+    const resetBtn = document.getElementById('btnResetYoYCategory');
+    const titleEl = document.getElementById('yoyMacroShiftTitle');
+    const subtitleEl = document.getElementById('yoyMacroShiftSubtitle');
+    if (!ctx) return;
+
+    if (charts.yoyMacroShift) charts.yoyMacroShift.destroy();
+
+    const targetYear = state.quarterTargetYear || '2026';
+    const txs = window.FINANCE_DATA.transactions.filter(t => t.year === targetYear && t.type === '지출');
+
+    if (titleEl) {
+      titleEl.textContent = `${targetYear}년 주요 대분류 분기별 지출 비교 (클릭 시 드릴다운)`;
+    }
+    if (subtitleEl) {
+      subtitleEl.textContent = `${targetYear}년 1분기~4분기 지출액 비교 · 카테고리를 클릭하면 우측 차트에 해당 대분류만 드릴다운되어 분기별 소분류와 증감률이 표시됩니다.`;
+    }
+
+    const catMap = {};
+    txs.forEach(t => {
+      const c = t.category || '기타';
+      catMap[c] = (catMap[c] || 0) + Math.abs(t.amount);
+    });
+    const categories = Object.keys(catMap).sort((a, b) => catMap[b] - catMap[a]);
+
+    renderYoYCategoryChips(categories);
+
+    if (badgeEl && resetBtn) {
+      if (state.yoyCategory) {
+        badgeEl.style.display = 'inline-flex';
+        badgeEl.textContent = `${state.yoyCategory} 선택됨`;
+        const color = getCategoryColor(state.yoyCategory);
+        badgeEl.style.backgroundColor = `${color}20`;
+        badgeEl.style.color = color;
+        badgeEl.style.border = `1px solid ${color}`;
+        resetBtn.style.display = 'inline-flex';
+      } else {
+        badgeEl.style.display = 'none';
+        resetBtn.style.display = 'none';
+      }
+    }
+
+    const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+    const quarterLabels = ['1분기 (1~3월)', '2분기 (4~6월)', '3분기 (7~9월)', targetYear === '2026' ? '4분기 (10월)' : '4분기 (10~12월)'];
+    const quarterColors = ['#64748B', '#06B6D4', '#FF5A5F', '#0046FF'];
+
+    const datasets = quarters.map((q, qIdx) => {
+      const qTxs = txs.filter(t => t.quarter === q);
+      const data = categories.map(cat => {
+        return qTxs.filter(t => t.category === cat).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      });
+
+      const bgColors = categories.map(cat => {
+        const baseColor = quarterColors[qIdx];
+        if (state.yoyCategory) {
+          return cat === state.yoyCategory ? baseColor : `${baseColor}30`;
+        }
+        return baseColor;
+      });
+
+      return {
+        label: quarterLabels[qIdx],
+        data: data,
+        backgroundColor: bgColors,
+        borderRadius: 4
+      };
+    });
+
+    charts.yoyMacroShift = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: categories,
+        datasets: datasets
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        onClick: (event) => {
+          const points = charts.yoyMacroShift.getElementsAtEventForMode(
+            event,
+            'nearest',
+            { axis: 'y', intersect: false },
+            true
+          );
+          if (points && points.length > 0) {
+            const index = points[0].index;
+            const clickedCat = categories[index];
+            if (state.yoyCategory === clickedCat) {
+              state.yoyCategory = null;
+            } else {
+              state.yoyCategory = clickedCat;
+            }
+            renderQuarterlyMacroShiftChart();
+            renderQuarterlyDetailComboChart();
+          }
+        },
+        plugins: {
+          legend: { position: 'top', labels: { font: { family: 'Pretendard', weight: '700' } } },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.dataset.label}: ${formatKRW(ctx.raw)} (클릭 시 우측 상세 드릴다운)`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: COLORS.border },
+            ticks: { callback: val => formatCompactKRW(val) }
+          },
+          y: { grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // Right Chart: Quarterly Detail Stacked Bar + QoQ Growth Rate Combo Chart (Annotation 3)
+  function renderQuarterlyDetailComboChart() {
+    const ctx = document.getElementById('yoyDetailComboChart');
+    const titleEl = document.getElementById('yoyDetailTitle');
+    const subtitleEl = document.getElementById('yoyDetailSubtitle');
+    if (!ctx) return;
+
+    if (charts.yoyDetailCombo) charts.yoyDetailCombo.destroy();
+
+    const targetYear = state.quarterTargetYear || '2026';
+    const txs = window.FINANCE_DATA.transactions.filter(t => t.year === targetYear && t.type === '지출');
+
+    const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+    const quarterDisplayNames = ['1분기', '2분기', '3분기', targetYear === '2026' ? '4분기(10월)' : '4분기'];
+
+    const datasets = [];
+    const quarterlyTotals = {};
+    let growthRates = [];
+
+    if (state.yoyCategory) {
+      if (titleEl) titleEl.textContent = `[${state.yoyCategory}] ${targetYear}년 분기별 지출 및 소분류 구성 (QoQ 복합차트)`;
+      if (subtitleEl) subtitleEl.textContent = `각 분기별 소분류 지출(세로 스택 막대) 및 전분기 대비 증감률(선 그래프, 0% 기준선)`;
+
+      const catTxs = txs.filter(t => t.category === state.yoyCategory);
+
+      const subcatTotals = {};
+      catTxs.forEach(t => {
+        const sub = t.subcategory || '미분류';
+        subcatTotals[sub] = (subcatTotals[sub] || 0) + Math.abs(t.amount);
+      });
+
+      const sortedSubcats = Object.keys(subcatTotals).sort((a,b) => subcatTotals[b] - subcatTotals[a]);
+      const topSubcats = sortedSubcats.slice(0, 7);
+      const hasOther = sortedSubcats.length > 7;
+
+      quarters.forEach(q => {
+        quarterlyTotals[q] = catTxs.filter(t => t.quarter === q).reduce((s, t) => s + Math.abs(t.amount), 0);
+      });
+
+      topSubcats.forEach((sub, sIdx) => {
+        const color = SUBCAT_PALETTE[sIdx % SUBCAT_PALETTE.length];
+        const data = quarters.map(q => {
+          return catTxs.filter(t => t.quarter === q && (t.subcategory || '미분류') === sub)
+                       .reduce((s, t) => s + Math.abs(t.amount), 0);
+        });
+
+        datasets.push({
+          type: 'bar',
+          label: sub,
+          data: data,
+          backgroundColor: color,
+          stack: 'quarterStack',
+          borderRadius: 3,
+          order: 2,
+          yAxisID: 'y'
+        });
+      });
+
+      if (hasOther) {
+        const otherSubs = new Set(sortedSubcats.slice(7));
+        const otherData = quarters.map(q => {
+          return catTxs.filter(t => t.quarter === q && otherSubs.has(t.subcategory || '미분류'))
+                       .reduce((s, t) => s + Math.abs(t.amount), 0);
+        });
+        datasets.push({
+          type: 'bar',
+          label: '기타 소분류',
+          data: otherData,
+          backgroundColor: '#94A3B8',
+          stack: 'quarterStack',
+          borderRadius: 3,
+          order: 2,
+          yAxisID: 'y'
+        });
+      }
+
+      // QoQ Growth Rate Line (%)
+      growthRates = quarters.map((q, idx) => {
+        if (idx === 0) return null;
+        const prevQ = quarters[idx - 1];
+        const prevVal = quarterlyTotals[prevQ] || 0;
+        const currVal = quarterlyTotals[q] || 0;
+        if (prevVal === 0) return 0;
+        return ((currVal - prevVal) / prevVal) * 100;
+      });
+
+      datasets.push({
+        type: 'line',
+        label: `${state.yoyCategory} 전분기 대비 증감률 (%)`,
+        data: growthRates,
+        borderColor: COLORS.navy,
+        backgroundColor: COLORS.navy,
+        borderWidth: 3,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        pointBackgroundColor: '#FFFFFF',
+        pointBorderColor: COLORS.navy,
+        pointBorderWidth: 2.5,
+        tension: 0.2,
+        order: 1,
+        yAxisID: 'yRate'
+      });
+
+    } else {
+      if (titleEl) titleEl.textContent = `${targetYear}년 전체 대분류별 분기별 지출 비중 및 증감률 (QoQ 복합차트)`;
+      if (subtitleEl) subtitleEl.textContent = `1레벨 대분류별 분기별 지출 구성(세로 스택 막대) 및 총지출 전분기 대비 증감률(선 그래프, 0% 기준선)`;
+
+      const catMap = {};
+      txs.forEach(t => {
+        const c = t.category || '기타';
+        catMap[c] = (catMap[c] || 0) + Math.abs(t.amount);
+      });
+      const majorCats = Object.keys(catMap).sort((a, b) => catMap[b] - catMap[a]);
+
+      quarters.forEach(q => {
+        quarterlyTotals[q] = txs.filter(t => t.quarter === q).reduce((s, t) => s + Math.abs(t.amount), 0);
+      });
+
+      majorCats.forEach(cat => {
+        const color = getCategoryColor(cat);
+        const data = quarters.map(q => {
+          return txs.filter(t => t.quarter === q && t.category === cat)
+                    .reduce((s, t) => s + Math.abs(t.amount), 0);
+        });
+
+        datasets.push({
+          type: 'bar',
+          label: cat,
+          data: data,
+          backgroundColor: color,
+          stack: 'allCats',
+          borderRadius: 2,
+          order: 2,
+          yAxisID: 'y'
+        });
+      });
+
+      growthRates = quarters.map((q, idx) => {
+        if (idx === 0) return null;
+        const prevQ = quarters[idx - 1];
+        const prevVal = quarterlyTotals[prevQ] || 0;
+        const currVal = quarterlyTotals[q] || 0;
+        if (prevVal === 0) return 0;
+        return ((currVal - prevVal) / prevVal) * 100;
+      });
+
+      datasets.push({
+        type: 'line',
+        label: '총소비지출 전분기 대비 증감률 (%)',
+        data: growthRates,
+        borderColor: COLORS.navy,
+        backgroundColor: COLORS.navy,
+        borderWidth: 3,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        pointBackgroundColor: '#FFFFFF',
+        pointBorderColor: COLORS.navy,
+        pointBorderWidth: 2.5,
+        tension: 0.2,
+        order: 1,
+        yAxisID: 'yRate'
+      });
+    }
+
+    const validRates = growthRates.filter(r => r !== null && !isNaN(r));
+    const minR = validRates.length ? Math.min(...validRates) : -25;
+    const maxR = validRates.length ? Math.max(...validRates) : 25;
+    const bound = Math.ceil(Math.max(Math.abs(minR), Math.abs(maxR), 25) * 1.25 / 10) * 10;
+
+    charts.yoyDetailCombo = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: quarterDisplayNames,
+        datasets: datasets
+      },
+      plugins: [yoyLinePlugin],
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { font: { family: 'Pretendard', weight: '700', size: 11 }, usePointStyle: true }
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                if (ctx.dataset.yAxisID === 'yRate') {
+                  return `${ctx.dataset.label}: ${ctx.raw !== null ? `${ctx.raw > 0 ? '+' : ''}${ctx.raw.toFixed(1)}%` : '-'}`;
+                }
+                const total = quarterlyTotals[quarters[ctx.dataIndex]] || 1;
+                const pct = ((ctx.raw / total) * 100).toFixed(1);
+                return `${ctx.dataset.label}: ${formatKRW(ctx.raw)} (${pct}%)`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false } },
+          y: {
+            stacked: true,
+            position: 'left',
+            grid: { color: COLORS.border },
+            ticks: { callback: val => formatCompactKRW(val) }
+          },
+          yRate: {
+            position: 'right',
+            grid: { display: false },
+            suggestedMin: -bound,
+            suggestedMax: bound,
+            ticks: { 
+              callback: val => `${val > 0 ? '+' : ''}${val.toFixed(0)}%`,
+              font: { family: 'Pretendard', weight: '600', size: 10 }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Quarterly Financial Scorecard Table (Annotation 3)
+  function renderQuarterlyScorecardTable() {
+    const tableHeader = document.getElementById('yoyScorecardHeader');
+    const tableBody = document.getElementById('yoyScorecardBody');
+    const titleEl = document.getElementById('yoyScorecardTitle');
+    const subtitleEl = document.getElementById('yoyScorecardSubtitle');
+    if (!tableHeader || !tableBody) return;
+
+    const targetYear = state.quarterTargetYear || '2026';
+    const allTxs = window.FINANCE_DATA.transactions;
+    const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+    const quarterNames = ['1분기', '2분기', '3분기', targetYear === '2026' ? '4분기(10월)' : '4분기'];
+
+    if (titleEl) {
+      titleEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>${targetYear}년 분기별 핵심 재무 성과표 (Quarterly Scorecard)`;
+    }
+    if (subtitleEl) {
+      subtitleEl.textContent = `${targetYear}년 1분기~4분기 실질소득, 순소비지출, 잉여현금흐름, 저축률의 분기별 추산 및 변동률`;
+    }
+
+    tableHeader.innerHTML = `
+      <tr>
+        <th>재무 지표</th>
+        ${quarters.map((q, idx) => `<th class="text-right">${targetYear}년 ${quarterNames[idx]}</th>`).join('')}
+        <th class="text-right">최근 QoQ 변동</th>
+      </tr>
+    `;
+
+    const quarterlyMetrics = quarters.map(q => {
+      const qTxs = allTxs.filter(t => t.year === targetYear && t.quarter === q);
+      return calculateMacroMetrics(qTxs);
+    });
+
+    const rows = [
+      {
+        name: '실질 총수입 (Real Income)',
+        getVal: m => m.incomeToUse,
+        isIncome: true
+      },
+      {
+        name: '순소비 지출 (Net Living Expense)',
+        getVal: m => m.netLivingExpense,
+        isExpense: true
+      },
+      {
+        name: '잉여 현금흐름 (Free Cash Flow)',
+        getVal: m => m.netFreeCashFlow,
+        isNet: true
+      },
+      {
+        name: '순투자 적립액 (Pure Investment)',
+        getVal: m => m.pureInvestment,
+        isInvest: true
+      },
+      {
+        name: '저축·투자 여력률 (%)',
+        getVal: m => m.savingsCapacityRate,
+        isRate: true
+      },
+      {
+        name: '캐시백 및 금융수익',
+        getVal: m => m.financialYieldTotal,
+        isIncome: true
+      }
+    ];
+
+    tableBody.innerHTML = rows.map(r => {
+      const vals = quarterlyMetrics.map(m => r.getVal(m));
       const vPrev = vals[vals.length - 2] || 0;
       const vCurr = vals[vals.length - 1] || 0;
       const diff = vCurr - vPrev;
