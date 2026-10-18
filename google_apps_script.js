@@ -19,7 +19,8 @@
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('⚡ 가계부 관리')
-    .addItem('10월 18일 신규 내역 4건 지금 즉시 추가', 'appendOct18Transactions')
+    .addItem('🔄 통합_내역 수식 자동 복구 & 최신순 정렬', 'fixIntegratedSheetFormula')
+    .addItem('10월 18일 신규 내역 중복 정리 및 반영', 'appendOct18Transactions')
     .addItem('2026_수입지출 시트로 이동', 'goTo2026Sheet')
     .addToUi();
 }
@@ -31,7 +32,43 @@ function goTo2026Sheet() {
 }
 
 /**
- * 10월 18일 소비 이력 4건 원클릭 즉시 삽입 함수
+ * '통합_내역' 시트의 A1 수식을 불변(INDIRECT) 수식으로 복구 및 최신순(SORT) 정렬
+ * 신규 행을 상단에 삽입하더라도 수식 범위가 절대 밀리지(A10으로 변질) 않습니다.
+ */
+function fixIntegratedSheetFormula() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('통합_내역');
+  if (!sheet) {
+    SpreadsheetApp.getUi().alert("'통합_내역' 시트를 찾을 수 없습니다.");
+    return;
+  }
+  
+  var formula = '=LET(' +
+    'raw, VSTACK(' +
+      'INDIRECT("\'2026_수입지출\'!A2:J"),' +
+      'INDIRECT("\'2025_수입지출\'!A2:J"),' +
+      'INDIRECT("\'2024_수입지출\'!A2:J"),' +
+      'INDIRECT("\'2023_수입지출\'!A2:J")' +
+    '),' +
+    'filtered, FILTER(raw, INDEX(raw, 0, 1) <> ""), ' +
+    'sorted, SORT(filtered, 1, FALSE, 2, FALSE), ' +
+    'dates, INDEX(sorted, 0, 1), ' +
+    'years, ARRAYFORMULA(TEXT(dates, "yyyy")), ' +
+    'months, ARRAYFORMULA(TEXT(dates, "yyyy-mm")), ' +
+    'VSTACK(' +
+      '{"날짜","시간","타입","대분류","소분류","내용","금액","화폐","결제수단","메모","연도","연월"}, ' +
+      'HSTACK(sorted, years, months)' +
+    ')' +
+  ')';
+  
+  sheet.getRange("A1").setFormula(formula);
+  if (SpreadsheetApp.getUi()) {
+    SpreadsheetApp.getUi().alert("✅ '통합_내역' 시트의 수식이 정상 복구되었습니다!\n\n이제 2026년 10월 18일 최신 내역이 상단에 즉시 표시되며, 앞으로 데이터를 추가해도 수식이 밀리지 않습니다.");
+  }
+}
+
+/**
+ * 10월 18일 소비 이력 중복 체크 및 삽입 함수
  */
 function appendOct18Transactions() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -42,17 +79,23 @@ function appendOct18Transactions() {
     return;
   }
   
-  var newRows = [
-    ["2026-10-18", "14:10", "지출", "고정비_주거_통신_보험", "재산세 7월 11월", "지자체세입금(삼성페이)", -139690, "KRW", "Deep Oil", ""],
-    ["2026-10-18", "12:01", "지출", "외식비", "간식류", "씨유(CU) 동탄한화점", -7320, "KRW", "Deep Oil", ""],
-    ["2026-10-18", "10:33", "지출", "문화여가비", "흠취미", "NICE_산림휴양시설_1", -18500, "KRW", "KB국민 Liiv Mate카드", "용현자연휴양 캠핑"],
-    ["2026-10-18", "07:25", "지출", "문화여가비", "흠취미", "한국해운조합", -31400, "KRW", "카카오페이 간편결제", "섬여행 배편"]
-  ];
+  // 기존 10월 18일 데이터가 이미 있으면 중복 삽입 방지
+  var firstVal = sheet.getRange(2, 1).getValue();
+  var firstStr = firstVal instanceof Date ? Utilities.formatDate(firstVal, "Asia/Seoul", "yyyy-MM-dd") : String(firstVal);
   
-  sheet.insertRowsBefore(2, newRows.length);
-  sheet.getRange(2, 1, newRows.length, 10).setValues(newRows);
+  if (firstStr.indexOf("2026-10-18") === -1) {
+    var newRows = [
+      ["2026-10-18", "14:10", "지출", "고정비_주거_통신_보험", "재산세 7월 11월", "지자체세입금(삼성페이)", -139690, "KRW", "Deep Oil", ""],
+      ["2026-10-18", "12:01", "지출", "외식비", "간식류", "씨유(CU) 동탄한화점", -7320, "KRW", "Deep Oil", ""],
+      ["2026-10-18", "10:33", "지출", "문화여가비", "흠취미", "NICE_산림휴양시설_1", -18500, "KRW", "KB국민 Liiv Mate카드", "용현자연휴양 캠핑"],
+      ["2026-10-18", "07:25", "지출", "문화여가비", "흠취미", "한국해운조합", -31400, "KRW", "카카오페이 간편결제", "섬여행 배편"]
+    ];
+    sheet.insertRowsBefore(2, newRows.length);
+    sheet.getRange(2, 1, newRows.length, 10).setValues(newRows);
+  }
   
-  SpreadsheetApp.getUi().alert("✅ 10월 18일 신규 거래 4건이 '2026_수입지출'에 추가되었습니다!\n\n'통합_내역' 시트도 VSTACK 수식에 의해 자동 갱신되었습니다.");
+  // 통합_내역 수식 자동 복구
+  fixIntegratedSheetFormula();
 }
 
 /**
@@ -83,6 +126,9 @@ function doPost(e) {
       sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
       insertedCount = rows.length;
     }
+    
+    // 삽입 후 통합_내역 수식 항상 최신화
+    fixIntegratedSheetFormula();
     
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
