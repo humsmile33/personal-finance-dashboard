@@ -439,13 +439,17 @@
           <div class="sol-card-header">
             <div class="sol-card-title-group">
               <h2>연도별 주요 대분류 월평균 지출 비교 (클릭 시 드릴다운)</h2>
-              <p>2023~2026 정규화 월평균 비교 · 카테고리를 클릭하면 우측 차트에 연도별 소분류 및 증감률이 표시됩니다.</p>
+              <p>2023~2026 정규화 월평균 비교 · 카테고리를 클릭하면 우측 차트에 해당 대분류만 드릴다운되어 연도별 소분류와 증감률이 표시됩니다.</p>
             </div>
             <div class="sol-card-tools">
               <span class="sol-badge sol-badge-primary" id="yoySelectedBadge" style="display:none;">선택: 전체</span>
             </div>
           </div>
-          <div class="chart-wrapper" style="height: 330px;">
+          <!-- Clickable Category Chips Bar for Quick 1-Click Drilldown -->
+          <div class="filter-chip-group" id="yoyCategoryChips" style="margin-bottom: 12px; overflow-x: auto; padding-bottom: 6px; flex-wrap: wrap;">
+            <!-- Populated dynamically -->
+          </div>
+          <div class="chart-wrapper" style="height: 380px;">
             <canvas id="yoyMacroShiftChart"></canvas>
           </div>
         </div>
@@ -455,16 +459,16 @@
           <div class="sol-card-header">
             <div class="sol-card-title-group">
               <h2 id="yoyDetailTitle">전체 대분류별 연도별 지출 비중 및 증감률 (YoY 복합차트)</h2>
-              <p id="yoyDetailSubtitle">1레벨 대분류별 연도별 지출 구성(스택 막대) 및 총지출 전년 대비 증감률(선 그래프)</p>
+              <p id="yoyDetailSubtitle">1레벨 대분류별 연도별 지출 구성(스택 막대) 및 총지출 전년 대비 증감률(선 그래프, 0% 기준선)</p>
             </div>
             <div class="sol-card-tools" id="yoyDetailTools">
               <button class="btn-sol-ghost" id="btnResetYoYCategory" style="display:none;">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-                <span>전체 보기</span>
+                <span>전체 대분류 종합 보기</span>
               </button>
             </div>
           </div>
-          <div class="chart-wrapper" style="height: 330px;">
+          <div class="chart-wrapper" style="height: 420px;">
             <canvas id="yoyDetailComboChart"></canvas>
           </div>
         </div>
@@ -501,18 +505,18 @@
     <div class="tab-pane" id="tab-explorer">
       <!-- Drilldown Charts -->
       <div class="grid-2col">
-        <!-- Donut: Major Categories -->
+        <!-- Donut: Major Categories (All categories included including 외식비) -->
         <div class="sol-card">
           <div class="sol-card-header">
             <div class="sol-card-title-group">
-              <h2>지출 대분류 점유율 (카테고리 클릭 시 소분류 드릴다운)</h2>
-              <p>카테고리 슬라이스를 클릭하면 우측 차트 및 하단 거래내역이 해당 항목으로 자동 연동됩니다.</p>
+              <h2>지출 대분류 점유율 (전체 대분류 포함 · 카테고리 클릭 시 드릴다운)</h2>
+              <p>외식비, 식비, 구매비 등 전체 14개 대분류의 지출 비중 (슬라이스 클릭 시 세부 소분류 및 하단 거래내역 즉시 연동)</p>
             </div>
             <div class="sol-card-tools">
               <span class="sol-badge sol-badge-primary" id="donutSelectedBadge" style="display:none;">전체</span>
             </div>
           </div>
-          <div class="chart-wrapper" style="height: 290px;">
+          <div class="chart-wrapper" style="height: 380px;">
             <canvas id="drilldownDonutChart"></canvas>
           </div>
         </div>
@@ -531,7 +535,7 @@
               </button>
             </div>
           </div>
-          <div class="chart-wrapper" style="height: 290px;">
+          <div class="chart-wrapper" style="height: 380px;">
             <canvas id="drilldownNestedBarChart"></canvas>
           </div>
         </div>

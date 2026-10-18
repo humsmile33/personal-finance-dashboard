@@ -9,18 +9,19 @@
   // --- Category Color Palette (Unified across all charts & drilldowns) ---
   const CATEGORY_COLORS = {
     '식비': '#0046FF',              // Shinhan Blue
+    '외식비': '#FF5A5F',            // Coral Red
     '구매비': '#7C3AED',            // Purple
-    '외식비': '#FF5A5F',            // Coral
     '교통비': '#06B6D4',            // Cyan
     '문화여가비': '#F59E0B',        // Amber
-    '의료/건강': '#16A55C',         // Emerald
+    '의료/건강': '#16A55C',         // Emerald Green
     '교육/학습/보육': '#E11D48',     // Crimson Red (Requested)
     '가족행사비': '#EC4899',        // Pink
-    '고정비_주거_통신_보험': '#475569', // Slate
+    '고정비_주거_통신_보험': '#475569', // Dark Slate
     '고정보험(생명.연금.실비)': '#0284C7', // Sky Blue
-    '기타지출': '#94A3B8',          // Light Slate
+    '기타지출': '#8B5CF6',          // Violet
     '대인관계': '#D97706',          // Warm Amber
-    '월경조사비': '#8B5CF6'         // Violet
+    '월경조사비': '#A855F7',         // Lavender
+    '미분류': '#94A3B8'             // Gray
   };
 
   function getCategoryColor(cat) {
@@ -31,8 +32,82 @@
   const SUBCAT_PALETTE = [
     '#0046FF', '#FF5A5F', '#16A55C', '#F59E0B', 
     '#7C3AED', '#06B6D4', '#EC4899', '#64748B', 
-    '#E11D48', '#10B981', '#3B82F6', '#8B5CF6'
+    '#E11D48', '#10B981', '#3B82F6', '#8B5CF6',
+    '#14B8A6', '#F97316', '#6366F1'
   ];
+
+  // Custom Chart.js Plugin: Draws 0% Dashed Baseline & YoY Data Value Labels (Annotation 2)
+  const yoyLinePlugin = {
+    id: 'yoyLinePlugin',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      if (!scales || !scales.yRate || !chartArea) return;
+      const { left, right, top, bottom } = chartArea;
+      const yRate = scales.yRate;
+
+      // 1. Draw 0% dashed baseline across the entire chart area
+      const zeroY = yRate.getPixelForValue(0);
+      if (zeroY >= top && zeroY <= bottom) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#94A3B8'; // clearly visible thin dashed line
+        ctx.moveTo(left, zeroY);
+        ctx.lineTo(right, zeroY);
+        ctx.stroke();
+
+        // 0% Baseline Tag
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#64748B';
+        ctx.font = 'bold 11px Pretendard, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('0% 기준선', right - 6, zeroY - 3);
+        ctx.restore();
+      }
+
+      // 2. Draw Data Value Badges on every point of the YoY growth rate line
+      const lineDatasetIndex = chart.data.datasets.findIndex(d => d.type === 'line' || d.yAxisID === 'yRate');
+      if (lineDatasetIndex >= 0) {
+        const meta = chart.getDatasetMeta(lineDatasetIndex);
+        const dataset = chart.data.datasets[lineDatasetIndex];
+        ctx.save();
+        ctx.font = 'bold 11px Pretendard, sans-serif';
+        ctx.textAlign = 'center';
+
+        meta.data.forEach((element, index) => {
+          const val = dataset.data[index];
+          if (val !== null && val !== undefined && !isNaN(val)) {
+            const { x, y } = element;
+            const sign = val > 0 ? '+' : '';
+            const text = `${sign}${val.toFixed(1)}%`;
+            const textWidth = ctx.measureText(text).width;
+            const badgeW = textWidth + 10;
+            const badgeH = 18;
+            const badgeX = x - badgeW / 2;
+            const badgeY = val >= 0 ? Math.max(top + 4, y - 24) : Math.min(bottom - badgeH - 4, y + 8);
+
+            // Rounded badge background (Blue for +, Coral for -)
+            ctx.fillStyle = val >= 0 ? 'rgba(0, 70, 255, 0.95)' : 'rgba(255, 90, 95, 0.95)';
+            ctx.beginPath();
+            if (ctx.roundRect) {
+              ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4);
+            } else {
+              ctx.rect(badgeX, badgeY, badgeW, badgeH);
+            }
+            ctx.fill();
+
+            // Text
+            ctx.fillStyle = '#FFFFFF';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, x, badgeY + badgeH / 2);
+          }
+        });
+        ctx.restore();
+      }
+    }
+  };
 
   // --- Global Application State ---
   const state = {
@@ -1296,6 +1371,43 @@
     renderYoYScorecardTable();
   }
 
+  // Quick 1-Click Category Filter Chips for YoY Shift
+  function renderYoYCategoryChips(categories) {
+    const container = document.getElementById('yoyCategoryChips');
+    if (!container) return;
+
+    let html = `
+      <button class="filter-chip ${!state.yoyCategory ? 'active' : ''}" data-yoy-cat="ALL" style="font-size:12px; padding:4px 10px; margin-right:4px; margin-bottom:4px; border-radius: 9999px;">
+        전체보기 (종합)
+      </button>
+    `;
+
+    categories.forEach(cat => {
+      const isActive = state.yoyCategory === cat;
+      const color = getCategoryColor(cat);
+      html += `
+        <button class="filter-chip ${isActive ? 'active' : ''}" data-yoy-cat="${cat}" style="font-size:12px; padding:4px 10px; margin-right:4px; margin-bottom:4px; border-radius: 9999px; border-color: ${isActive ? color : 'var(--color-border)'}; ${isActive ? `background:${color}15; color:${color}; font-weight:700;` : ''}">
+          <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${color}; margin-right:5px; vertical-align:middle;"></span>${cat}
+        </button>
+      `;
+    });
+
+    container.innerHTML = html;
+
+    container.querySelectorAll('button[data-yoy-cat]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cat = btn.getAttribute('data-yoy-cat');
+        if (cat === 'ALL' || state.yoyCategory === cat) {
+          state.yoyCategory = null;
+        } else {
+          state.yoyCategory = cat;
+        }
+        renderYoYMacroShiftChart();
+        renderYoYDetailComboChart();
+      });
+    });
+  }
+
   // Left Chart: Macro categories comparison across years (Clickable for drilldown)
   function renderYoYMacroShiftChart() {
     const ctx = document.getElementById('yoyMacroShiftChart');
@@ -1309,7 +1421,16 @@
     const activeMap = window.FINANCE_DATA.metadata.activeMonths;
     const txs = window.FINANCE_DATA.transactions;
 
-    const categories = ['식비', '외식비', '구매비', '교통비', '문화여가비', '의료/건강', '교육/학습/보육', '가족행사비', '고정비_주거_통신_보험', '기타지출'];
+    // Dynamically derive ALL expense categories present in transactions, sorted by total amount
+    const catMap = {};
+    txs.filter(t => t.type === '지출').forEach(t => {
+      const c = t.category || '기타';
+      catMap[c] = (catMap[c] || 0) + Math.abs(t.amount);
+    });
+    const categories = Object.keys(catMap).sort((a, b) => catMap[b] - catMap[a]);
+
+    // Render 1-click Category Chips
+    renderYoYCategoryChips(categories);
 
     // Update Badge & Reset Button in header
     if (badgeEl && resetBtn) {
@@ -1340,7 +1461,7 @@
       const bgColors = categories.map(cat => {
         const baseColor = [COLORS.slate, COLORS.purple, COLORS.coral, COLORS.primary][idx % 4];
         if (state.yoyCategory) {
-          return cat === state.yoyCategory ? baseColor : `${baseColor}40`;
+          return cat === state.yoyCategory ? baseColor : `${baseColor}30`;
         }
         return baseColor;
       });
@@ -1363,9 +1484,15 @@
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
-        onClick: (event, elements) => {
-          if (elements && elements.length > 0) {
-            const index = elements[0].index;
+        onClick: (event) => {
+          const points = charts.yoyMacroShift.getElementsAtEventForMode(
+            event,
+            'nearest',
+            { axis: 'y', intersect: false },
+            true
+          );
+          if (points && points.length > 0) {
+            const index = points[0].index;
             const clickedCat = categories[index];
             if (state.yoyCategory === clickedCat) {
               state.yoyCategory = null; // Toggle
@@ -1395,7 +1522,7 @@
     });
   }
 
-  // Right Chart (Annotation 4): YoY Detail Stacked Bar + Growth Rate Combo Chart
+  // Right Chart (Annotation 2 & 4): YoY Detail Stacked Bar + Growth Rate Combo Chart
   function renderYoYDetailComboChart() {
     const ctx = document.getElementById('yoyDetailComboChart');
     const titleEl = document.getElementById('yoyDetailTitle');
@@ -1410,11 +1537,12 @@
 
     const datasets = [];
     const yearlyTotals = {};
+    let growthRates = [];
 
     if (state.yoyCategory) {
       // --- Case 1: Specific Category Drilled Down (e.g. '식비') ---
-      titleEl.textContent = `[${state.yoyCategory}] 연도별 변동 현황 및 소분류 구성 (YoY 복합차트)`;
-      subtitleEl.textContent = `각 연도별 소분류 지출(스택 막대) 및 전년 대비 증감률(선 그래프)`;
+      if (titleEl) titleEl.textContent = `[${state.yoyCategory}] 연도별 변동 현황 및 소분류 구성 (YoY 복합차트)`;
+      if (subtitleEl) subtitleEl.textContent = `각 연도별 소분류 지출(스택 막대) 및 전년 대비 증감률(선 그래프, 0% 기준선)`;
 
       const catTxs = txs.filter(t => t.category === state.yoyCategory);
 
@@ -1480,7 +1608,7 @@
       }
 
       // Growth Rate Line (%) on Secondary Y-Axis
-      const yoyRates = availYears.map((y, idx) => {
+      growthRates = availYears.map((y, idx) => {
         if (idx === 0) return null; // First year baseline
         const prevY = availYears[idx - 1];
         const prevVal = yearlyTotals[prevY] || 0;
@@ -1492,7 +1620,7 @@
       datasets.push({
         type: 'line',
         label: `${state.yoyCategory} 전년 대비 증감률 (%)`,
-        data: yoyRates,
+        data: growthRates,
         borderColor: COLORS.navy,
         backgroundColor: COLORS.navy,
         borderWidth: 3,
@@ -1508,10 +1636,16 @@
 
     } else {
       // --- Case 2: All 1-Level Categories Stacked (Default) ---
-      titleEl.textContent = `전체 대분류별 연도별 지출 비중 및 증감률 (YoY 복합차트)`;
-      subtitleEl.textContent = `1레벨 대분류별 연도별 지출 구성(스택 막대) 및 총지출 전년 대비 증감률(선 그래프)`;
+      if (titleEl) titleEl.textContent = `전체 대분류별 연도별 지출 비중 및 증감률 (YoY 복합차트)`;
+      if (subtitleEl) subtitleEl.textContent = `1레벨 대분류별 연도별 지출 구성(스택 막대) 및 총소비지출 전년 대비 증감률(선 그래프, 0% 기준선)`;
 
-      const majorCats = ['식비', '구매비', '외식비', '교통비', '문화여가비', '의료/건강', '교육/학습/보육', '가족행사비', '고정비_주거_통신_보험', '기타지출'];
+      // Dynamically get ALL expense categories across all transactions
+      const catMap = {};
+      txs.forEach(t => {
+        const c = t.category || '기타';
+        catMap[c] = (catMap[c] || 0) + Math.abs(t.amount);
+      });
+      const majorCats = Object.keys(catMap).sort((a, b) => catMap[b] - catMap[a]);
 
       // Compute total spending per year
       availYears.forEach(y => {
@@ -1520,7 +1654,7 @@
         yearlyTotals[y] = ySum / divisor;
       });
 
-      // Major Category Stacked Bars
+      // Major Category Stacked Bars (All 14 categories included!)
       majorCats.forEach(cat => {
         const color = getCategoryColor(cat);
         const data = availYears.map(y => {
@@ -1543,7 +1677,7 @@
       });
 
       // Total Expenditure YoY Growth Rate Line (%) on Secondary Y-Axis
-      const totalYoYRates = availYears.map((y, idx) => {
+      growthRates = availYears.map((y, idx) => {
         if (idx === 0) return null;
         const prevY = availYears[idx - 1];
         const prevVal = yearlyTotals[prevY] || 0;
@@ -1555,7 +1689,7 @@
       datasets.push({
         type: 'line',
         label: '총소비지출 전년 대비 증감률 (%)',
-        data: totalYoYRates,
+        data: growthRates,
         borderColor: COLORS.navy,
         backgroundColor: COLORS.navy,
         borderWidth: 3,
@@ -1570,12 +1704,19 @@
       });
     }
 
+    // Calculate symmetric bounds for yRate to center 0% baseline nicely
+    const validRates = growthRates.filter(r => r !== null && !isNaN(r));
+    const minR = validRates.length ? Math.min(...validRates) : -25;
+    const maxR = validRates.length ? Math.max(...validRates) : 25;
+    const bound = Math.ceil(Math.max(Math.abs(minR), Math.abs(maxR), 25) * 1.25 / 10) * 10;
+
     charts.yoyDetailCombo = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: availYears.map(y => `${y}년`),
         datasets: datasets
       },
+      plugins: [yoyLinePlugin], // Enables 0% dashed baseline and data value badges!
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -1609,7 +1750,12 @@
           yRate: {
             position: 'right',
             grid: { display: false },
-            ticks: { callback: val => `${val > 0 ? '+' : ''}${val.toFixed(0)}%` }
+            suggestedMin: -bound,
+            suggestedMax: bound,
+            ticks: { 
+              callback: val => `${val > 0 ? '+' : ''}${val.toFixed(0)}%`,
+              font: { family: 'Pretendard', weight: '600', size: 10 }
+            }
           }
         }
       }
@@ -1711,7 +1857,7 @@
 
     const txs = getFilteredTransactions().filter(t => t.type === '지출');
 
-    // Aggregate by category
+    // Aggregate by category - INCLUDE ALL CATEGORIES (No .slice(0, 8)!)
     const catSums = {};
     txs.forEach(t => {
       const cat = t.category || '기타';
@@ -1719,7 +1865,7 @@
     });
 
     const sortedCats = Object.keys(catSums).sort((a,b) => catSums[b] - catSums[a]);
-    const topCats = sortedCats.slice(0, 8);
+    const topCats = sortedCats; // ALL 14 categories, including 외식비, 의료/건강, 고정보험, etc.
     const topVals = topCats.map(c => catSums[c]);
 
     // Donut Colors mapped from unified palette
@@ -1779,7 +1925,14 @@
           }
         },
         plugins: {
-          legend: { position: 'bottom', labels: { font: { family: 'Pretendard', weight: '600', size: 11 } } },
+          legend: { 
+            position: 'right', 
+            labels: { 
+              font: { family: 'Pretendard', weight: '600', size: 11 },
+              boxWidth: 10,
+              padding: 6
+            } 
+          },
           tooltip: {
             callbacks: {
               label: ctx => {
@@ -1808,8 +1961,8 @@
 
     if (!state.drilldownCategory) {
       // --- Annotation 3: Default View when no category is selected -> Show 1-Level Major Categories ---
-      if (titleEl) titleEl.textContent = '전체 대분류별 지출 분석 (1레벨 랭킹)';
-      if (subtitleEl) subtitleEl.textContent = '각 대분류별 지출 규모 · 좌측 도넛 차트의 특정 카테고리를 클릭하면 세부 소분류로 드릴다운됩니다.';
+      if (titleEl) titleEl.textContent = '전체 대분류별 지출 분석 (1레벨 랭킹 · 14개 전체)';
+      if (subtitleEl) subtitleEl.textContent = '각 대분류별 지출 규모 · 좌측 도넛 차트 또는 막대를 클릭하면 세부 소분류로 드릴다운됩니다.';
       if (resetBtn) resetBtn.style.display = 'none';
 
       const barColors = topCats.map(c => getCategoryColor(c));
@@ -1829,9 +1982,12 @@
           indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
-          onClick: (event, elements) => {
-            if (elements && elements.length > 0) {
-              const index = elements[0].index;
+          onClick: (event) => {
+            const points = charts.drilldownBar.getElementsAtEventForMode(
+              event, 'nearest', { axis: 'y', intersect: false }, true
+            );
+            if (points && points.length > 0) {
+              const index = points[0].index;
               state.drilldownCategory = topCats[index];
               state.explorer.category = state.drilldownCategory;
               state.explorer.page = 1;
@@ -1874,7 +2030,7 @@
         subcatSums[sub] = (subcatSums[sub] || 0) + Math.abs(t.amount);
       });
 
-      const sortedSubs = Object.keys(subcatSums).sort((a,b) => subcatSums[b] - subcatSums[a]).slice(0, 8);
+      const sortedSubs = Object.keys(subcatSums).sort((a,b) => subcatSums[b] - subcatSums[a]).slice(0, 10);
       const subVals = sortedSubs.map(s => subcatSums[s]);
 
       charts.drilldownBar = new Chart(barCtx, {
