@@ -430,7 +430,7 @@
     </div>
 
     <!-- ==========================================================================
-         TAB 4: [📊 연도별 재무비교] (Multi-Year YoY Shift)
+         TAB 4: [📊 연도별 재무비교] (Multi-Year YoY Shift & Category Drilldown)
          ========================================================================== -->
     <div class="tab-pane" id="tab-yoy">
       <div class="grid-2col">
@@ -438,25 +438,34 @@
         <div class="sol-card">
           <div class="sol-card-header">
             <div class="sol-card-title-group">
-              <h2>연도별 주요 대분류 월평균 지출 비교 (YoY Normalized Shift)</h2>
-              <p>2023~2026 기록 개월수(12개월 vs 10개월)를 감안한 정규화 월평균 비교</p>
+              <h2>연도별 주요 대분류 월평균 지출 비교 (클릭 시 드릴다운)</h2>
+              <p>2023~2026 정규화 월평균 비교 · 카테고리를 클릭하면 우측 차트에 연도별 소분류 및 증감률이 표시됩니다.</p>
+            </div>
+            <div class="sol-card-tools">
+              <span class="sol-badge sol-badge-primary" id="yoySelectedBadge" style="display:none;">선택: 전체</span>
             </div>
           </div>
-          <div class="chart-wrapper" style="height: 320px;">
+          <div class="chart-wrapper" style="height: 330px;">
             <canvas id="yoyMacroShiftChart"></canvas>
           </div>
         </div>
 
-        <!-- Chart 2: Household Entity Financial Share -->
-        <div class="sol-card">
+        <!-- Chart 2: YoY Detail Stacked Bar + Growth Rate Combo Chart (Replaces Family Chart) -->
+        <div class="sol-card" id="yoyDetailCard">
           <div class="sol-card-header">
             <div class="sol-card-title-group">
-              <h2>가족 구성원별 재무 비중 (Family Entity Share)</h2>
-              <p>공통 생활비 · 영흠(취미/투자) · 현정(자금) · 초원(교육/연금) 지출 배분</p>
+              <h2 id="yoyDetailTitle">전체 대분류별 연도별 지출 비중 및 증감률 (YoY 복합차트)</h2>
+              <p id="yoyDetailSubtitle">1레벨 대분류별 연도별 지출 구성(스택 막대) 및 총지출 전년 대비 증감률(선 그래프)</p>
+            </div>
+            <div class="sol-card-tools" id="yoyDetailTools">
+              <button class="btn-sol-ghost" id="btnResetYoYCategory" style="display:none;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                <span>전체 보기</span>
+              </button>
             </div>
           </div>
-          <div class="chart-wrapper" style="height: 320px;">
-            <canvas id="yoyFamilyEntityChart"></canvas>
+          <div class="chart-wrapper" style="height: 330px;">
+            <canvas id="yoyDetailComboChart"></canvas>
           </div>
         </div>
       </div>
@@ -497,23 +506,32 @@
           <div class="sol-card-header">
             <div class="sol-card-title-group">
               <h2>지출 대분류 점유율 (카테고리 클릭 시 소분류 드릴다운)</h2>
-              <p>식비, 외식비, 구매비, 교통비, 문화여가비, 의료비 등 주요 지출 비중</p>
+              <p>카테고리 슬라이스를 클릭하면 우측 차트 및 하단 거래내역이 해당 항목으로 자동 연동됩니다.</p>
+            </div>
+            <div class="sol-card-tools">
+              <span class="sol-badge sol-badge-primary" id="donutSelectedBadge" style="display:none;">전체</span>
             </div>
           </div>
-          <div class="chart-wrapper" style="height: 280px;">
+          <div class="chart-wrapper" style="height: 290px;">
             <canvas id="drilldownDonutChart"></canvas>
           </div>
         </div>
 
-        <!-- Nested Bar: Subcategories -->
+        <!-- Nested Bar: Subcategories / Major Categories -->
         <div class="sol-card">
           <div class="sol-card-header">
             <div class="sol-card-title-group">
-              <h2 id="drilldownNestedTitle">[식비] 세부 소분류 지출 분석</h2>
-              <p>도넛 차트의 특정 카테고리를 클릭하면 자동으로 세부 항목이 갱신됩니다.</p>
+              <h2 id="drilldownNestedTitle">전체 대분류별 지출 분석 (1레벨 랭킹)</h2>
+              <p id="drilldownNestedSubtitle">좌측 도넛 차트의 특정 카테고리를 클릭하면 세부 소분류 지출 분석으로 전환됩니다.</p>
+            </div>
+            <div class="sol-card-tools">
+              <button class="btn-sol-ghost" id="btnResetDrilldown" style="display:none;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                <span>전체 대분류 보기 (초기화)</span>
+              </button>
             </div>
           </div>
-          <div class="chart-wrapper" style="height: 280px;">
+          <div class="chart-wrapper" style="height: 290px;">
             <canvas id="drilldownNestedBarChart"></canvas>
           </div>
         </div>
@@ -554,13 +572,23 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               통합 거래내역 탐색기 (Transaction Data Explorer)
             </h2>
-            <p>10,780건 전체 데이터 실시간 검색 및 다차원 필터링</p>
+            <p id="explorerSubtitle">10,780건 전체 데이터 실시간 검색 및 상단 대분류 드릴다운 연동 필터링</p>
           </div>
           <div class="sol-card-tools">
+            <!-- Active Drilldown Tag Filter Indicator -->
+            <div id="explorerActiveCategoryTag" style="display:none;">
+              <span class="active-category-pill" id="btnRemoveExplorerCategory" title="클릭하여 대분류 필터 초기화">
+                <span id="explorerCategoryTagName">대분류: 전체</span>
+                <span style="font-weight:bold; margin-left:4px;">&times;</span>
+              </span>
+            </div>
             <div class="search-input-wrap">
               <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               <input type="text" class="search-input" id="explorerSearch" placeholder="가맹점/메모/분류 검색 (예: 수영장)">
             </div>
+            <select class="btn-sol-ghost" id="explorerCategoryFilter" style="height:32px;">
+              <option value="ALL">대분류: 전체</option>
+            </select>
             <select class="btn-sol-ghost" id="explorerTypeFilter" style="height:32px;">
               <option value="ALL">타입: 전체</option>
               <option value="지출">지출만</option>

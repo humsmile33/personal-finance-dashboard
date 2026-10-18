@@ -168,6 +168,32 @@ body {
   color: var(--color-secondary-500);
 }
 
+.sol-badge-coral {
+  background: var(--color-error-bg);
+  color: var(--color-error-fg);
+}
+
+.active-category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.active-category-pill:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.chart-wrapper canvas {
+  cursor: pointer;
+}
+
 .header-actions {
   display: flex;
   align-items: center;

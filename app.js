@@ -6,6 +6,34 @@
 (function () {
   'use strict';
 
+  // --- Category Color Palette (Unified across all charts & drilldowns) ---
+  const CATEGORY_COLORS = {
+    '식비': '#0046FF',              // Shinhan Blue
+    '구매비': '#7C3AED',            // Purple
+    '외식비': '#FF5A5F',            // Coral
+    '교통비': '#06B6D4',            // Cyan
+    '문화여가비': '#F59E0B',        // Amber
+    '의료/건강': '#16A55C',         // Emerald
+    '교육/학습/보육': '#E11D48',     // Crimson Red (Requested)
+    '가족행사비': '#EC4899',        // Pink
+    '고정비_주거_통신_보험': '#475569', // Slate
+    '고정보험(생명.연금.실비)': '#0284C7', // Sky Blue
+    '기타지출': '#94A3B8',          // Light Slate
+    '대인관계': '#D97706',          // Warm Amber
+    '월경조사비': '#8B5CF6'         // Violet
+  };
+
+  function getCategoryColor(cat) {
+    return CATEGORY_COLORS[cat] || '#3B82F6';
+  }
+
+  // Subcategory Distinct Color Palette
+  const SUBCAT_PALETTE = [
+    '#0046FF', '#FF5A5F', '#16A55C', '#F59E0B', 
+    '#7C3AED', '#06B6D4', '#EC4899', '#64748B', 
+    '#E11D48', '#10B981', '#3B82F6', '#8B5CF6'
+  ];
+
   // --- Global Application State ---
   const state = {
     selectedYears: ['ALL'], // 'ALL' or array of year strings e.g. ['2025', '2026']
@@ -18,7 +46,8 @@
     homeChartMode: 'timeline',   // 'timeline' or 'annual'
     cfMatrixView: 'years',       // 'years' or 'months'
     cfMatrixSearch: '',
-    drilldownCategory: '식비',
+    drilldownCategory: null,     // null = view all major categories, string = specific category
+    yoyCategory: null,           // null = view all major categories, string = specific category
     explorer: {
       search: '',
       type: 'ALL',
@@ -100,6 +129,7 @@
   function bootstrap() {
     const data = window.FINANCE_DATA;
     renderYearFilterButtons(data.metadata.availableYears);
+    populateExplorerCategoryFilter();
     setupEventListeners();
     updateDashboard();
   }
@@ -118,7 +148,7 @@
 
     // Attach click events to year chips
     container.querySelectorAll('.filter-chip').forEach(btn => {
-      btn.addEventListener('click', e => {
+      btn.addEventListener('click', () => {
         const y = btn.getAttribute('data-year');
         if (y === 'ALL') {
           state.selectedYears = ['ALL'];
@@ -139,6 +169,28 @@
         updateDashboard();
       });
     });
+  }
+
+  // Populate Explorer Category Filter Dropdown
+  function populateExplorerCategoryFilter() {
+    const select = document.getElementById('explorerCategoryFilter');
+    if (!select) return;
+
+    const txs = window.FINANCE_DATA.transactions;
+    const catCounts = {};
+    txs.forEach(t => {
+      if (t.type === '지출' && t.category) {
+        catCounts[t.category] = (catCounts[t.category] || 0) + 1;
+      }
+    });
+
+    const sortedCats = Object.keys(catCounts).sort((a,b) => catCounts[b] - catCounts[a]);
+
+    let html = `<option value="ALL">대분류: 전체</option>`;
+    sortedCats.forEach(cat => {
+      html += `<option value="${cat}">${cat} (${catCounts[cat]}건)</option>`;
+    });
+    select.innerHTML = html;
   }
 
   // Setup Event Listeners for Filters & Navigation
@@ -234,6 +286,56 @@
       matrixSearch.addEventListener('input', e => {
         state.cfMatrixSearch = e.target.value.trim().toLowerCase();
         renderCashflowMatrixTable();
+      });
+    }
+
+    // Tab 4: Reset YoY Category Drilldown Button
+    const btnResetYoY = document.getElementById('btnResetYoYCategory');
+    if (btnResetYoY) {
+      btnResetYoY.addEventListener('click', () => {
+        state.yoyCategory = null;
+        renderYoYMacroShiftChart();
+        renderYoYDetailComboChart();
+      });
+    }
+
+    // Tab 5: Reset Category Drilldown Button (Annotation 3)
+    const btnResetDrill = document.getElementById('btnResetDrilldown');
+    if (btnResetDrill) {
+      btnResetDrill.addEventListener('click', () => {
+        state.drilldownCategory = null;
+        state.explorer.category = 'ALL';
+        state.explorer.page = 1;
+        const catSelect = document.getElementById('explorerCategoryFilter');
+        if (catSelect) catSelect.value = 'ALL';
+        renderCategoryDrilldown();
+        renderExplorerTable();
+      });
+    }
+
+    // Tab 5: Remove Explorer Active Category Pill (Annotation 1)
+    const btnRemoveExpCat = document.getElementById('btnRemoveExplorerCategory');
+    if (btnRemoveExpCat) {
+      btnRemoveExpCat.addEventListener('click', () => {
+        state.drilldownCategory = null;
+        state.explorer.category = 'ALL';
+        state.explorer.page = 1;
+        const catSelect = document.getElementById('explorerCategoryFilter');
+        if (catSelect) catSelect.value = 'ALL';
+        renderCategoryDrilldown();
+        renderExplorerTable();
+      });
+    }
+
+    // Explorer Category Filter Select Dropdown
+    const expCat = document.getElementById('explorerCategoryFilter');
+    if (expCat) {
+      expCat.addEventListener('change', e => {
+        state.explorer.category = e.target.value;
+        state.drilldownCategory = (e.target.value === 'ALL' ? null : e.target.value);
+        state.explorer.page = 1;
+        renderCategoryDrilldown();
+        renderExplorerTable();
       });
     }
 
@@ -892,7 +994,6 @@
 
     const summaries = window.FINANCE_DATA.annualSummaries;
     const availYears = window.FINANCE_DATA.metadata.availableYears;
-    const activeMonths = window.FINANCE_DATA.metadata.activeMonths;
 
     // Collect all unique cash flow items across years
     const itemMap = new Map();
@@ -1033,10 +1134,8 @@
     if (charts.investCumulative) charts.investCumulative.destroy();
 
     const txs = window.FINANCE_DATA.transactions;
-    // Track pure investment transfers
     const investTxs = txs.filter(t => t.type === '이체' && t.isPureInvestment).sort((a,b) => a.date.localeCompare(b.date));
 
-    // Group by month
     const monthMap = new Map();
     investTxs.forEach(t => {
       const ym = t.yearMonth;
@@ -1110,7 +1209,6 @@
 
     if (charts.assetPortfolio) charts.assetPortfolio.destroy();
 
-    // 2026 breakdown
     const summaries = window.FINANCE_DATA.annualSummaries;
     const bs2026 = summaries['2026']?.balanceSheet || [];
 
@@ -1190,16 +1288,19 @@
   }
 
   // ==========================================================================
-  // TAB 4: [📊 연도별 재무비교] (Multi-Year YoY Shift)
+  // TAB 4: [📊 연도별 재무비교 & 대분류 드릴다운 복합차트] (Annotation 4)
   // ==========================================================================
   function renderTabYoY() {
     renderYoYMacroShiftChart();
-    renderYoYFamilyEntityChart();
+    renderYoYDetailComboChart();
     renderYoYScorecardTable();
   }
 
+  // Left Chart: Macro categories comparison across years (Clickable for drilldown)
   function renderYoYMacroShiftChart() {
     const ctx = document.getElementById('yoyMacroShiftChart');
+    const badgeEl = document.getElementById('yoySelectedBadge');
+    const resetBtn = document.getElementById('btnResetYoYCategory');
     if (!ctx) return;
 
     if (charts.yoyMacroShift) charts.yoyMacroShift.destroy();
@@ -1208,8 +1309,23 @@
     const activeMap = window.FINANCE_DATA.metadata.activeMonths;
     const txs = window.FINANCE_DATA.transactions;
 
-    // Core categories
-    const categories = ['식비', '외식비', '구매비', '교통비', '문화여가비', '의료/건강', '가족행사비', '고정비_주거_통신_보험'];
+    const categories = ['식비', '외식비', '구매비', '교통비', '문화여가비', '의료/건강', '교육/학습/보육', '가족행사비', '고정비_주거_통신_보험', '기타지출'];
+
+    // Update Badge & Reset Button in header
+    if (badgeEl && resetBtn) {
+      if (state.yoyCategory) {
+        badgeEl.style.display = 'inline-flex';
+        badgeEl.textContent = `${state.yoyCategory} 선택됨`;
+        const color = getCategoryColor(state.yoyCategory);
+        badgeEl.style.backgroundColor = `${color}20`;
+        badgeEl.style.color = color;
+        badgeEl.style.border = `1px solid ${color}`;
+        resetBtn.style.display = 'inline-flex';
+      } else {
+        badgeEl.style.display = 'none';
+        resetBtn.style.display = 'none';
+      }
+    }
 
     const datasets = availYears.map((y, idx) => {
       const divisor = activeMap[y] || 12;
@@ -1217,14 +1333,22 @@
 
       const data = categories.map(cat => {
         const catSum = yTxs.filter(t => t.category === cat).reduce((sum, t) => sum + t.amount, 0);
-        return -catSum / divisor; // normalized monthly average
+        return state.metricMode === 'AVG' ? (-catSum / divisor) : -catSum;
       });
 
-      const colorPalette = [COLORS.slate, COLORS.purple, COLORS.coral, COLORS.primary];
+      // Highlight selected category if any
+      const bgColors = categories.map(cat => {
+        const baseColor = [COLORS.slate, COLORS.purple, COLORS.coral, COLORS.primary][idx % 4];
+        if (state.yoyCategory) {
+          return cat === state.yoyCategory ? baseColor : `${baseColor}40`;
+        }
+        return baseColor;
+      });
+
       return {
-        label: `${y}년 (월평균)`,
+        label: `${y}년 (${state.metricMode === 'AVG' ? '월평균' : '총계'})`,
         data: data,
-        backgroundColor: colorPalette[idx % colorPalette.length],
+        backgroundColor: bgColors,
         borderRadius: 4
       };
     });
@@ -1239,10 +1363,25 @@
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
+        onClick: (event, elements) => {
+          if (elements && elements.length > 0) {
+            const index = elements[0].index;
+            const clickedCat = categories[index];
+            if (state.yoyCategory === clickedCat) {
+              state.yoyCategory = null; // Toggle
+            } else {
+              state.yoyCategory = clickedCat;
+            }
+            renderYoYMacroShiftChart();
+            renderYoYDetailComboChart();
+          }
+        },
         plugins: {
           legend: { position: 'top', labels: { font: { family: 'Pretendard', weight: '700' } } },
           tooltip: {
-            callbacks: { label: ctx => `${ctx.dataset.label}: ${formatKRW(ctx.raw)}` }
+            callbacks: {
+              label: ctx => `${ctx.dataset.label}: ${formatKRW(ctx.raw)} (클릭 시 우측 상세 드릴다운)`
+            }
           }
         },
         scales: {
@@ -1256,34 +1395,182 @@
     });
   }
 
-  function renderYoYFamilyEntityChart() {
-    const ctx = document.getElementById('yoyFamilyEntityChart');
+  // Right Chart (Annotation 4): YoY Detail Stacked Bar + Growth Rate Combo Chart
+  function renderYoYDetailComboChart() {
+    const ctx = document.getElementById('yoyDetailComboChart');
+    const titleEl = document.getElementById('yoyDetailTitle');
+    const subtitleEl = document.getElementById('yoyDetailSubtitle');
     if (!ctx) return;
 
-    if (charts.yoyFamilyEntity) charts.yoyFamilyEntity.destroy();
+    if (charts.yoyDetailCombo) charts.yoyDetailCombo.destroy();
 
     const availYears = window.FINANCE_DATA.metadata.availableYears;
-    const txs = window.FINANCE_DATA.transactions;
+    const activeMap = window.FINANCE_DATA.metadata.activeMonths;
+    const txs = window.FINANCE_DATA.transactions.filter(t => t.type === '지출');
 
-    const entities = ['Shared', 'Yeongheum', 'Hyeonjeong', 'Chowon'];
-    const entityLabels = ['공통 생활비', '영흠 (한영흠)', '현정 (조현정)', '초원 (한초원)'];
+    const datasets = [];
+    const yearlyTotals = {};
 
-    const datasets = entities.map((ent, idx) => {
-      const data = availYears.map(y => {
-        const entTxs = txs.filter(t => t.year === y && t.entity === ent && t.type === '지출');
-        return -entTxs.reduce((sum, t) => sum + t.amount, 0);
+    if (state.yoyCategory) {
+      // --- Case 1: Specific Category Drilled Down (e.g. '식비') ---
+      titleEl.textContent = `[${state.yoyCategory}] 연도별 변동 현황 및 소분류 구성 (YoY 복합차트)`;
+      subtitleEl.textContent = `각 연도별 소분류 지출(스택 막대) 및 전년 대비 증감률(선 그래프)`;
+
+      const catTxs = txs.filter(t => t.category === state.yoyCategory);
+
+      // Find top subcategories
+      const subcatTotals = {};
+      catTxs.forEach(t => {
+        const sub = t.subcategory || '미분류';
+        subcatTotals[sub] = (subcatTotals[sub] || 0) + Math.abs(t.amount);
       });
 
-      const colors = [COLORS.primary, COLORS.purple, COLORS.coral, COLORS.amber];
-      return {
-        label: entityLabels[idx],
-        data: data,
-        backgroundColor: colors[idx],
-        borderRadius: 4
-      };
-    });
+      const sortedSubcats = Object.keys(subcatTotals).sort((a,b) => subcatTotals[b] - subcatTotals[a]);
+      const topSubcats = sortedSubcats.slice(0, 7);
+      const hasOther = sortedSubcats.length > 7;
 
-    charts.yoyFamilyEntity = new Chart(ctx, {
+      // Compute total for category per year
+      availYears.forEach(y => {
+        const divisor = (state.metricMode === 'AVG') ? (activeMap[y] || 12) : 1;
+        const ySum = catTxs.filter(t => t.year === y).reduce((s, t) => s + Math.abs(t.amount), 0);
+        yearlyTotals[y] = ySum / divisor;
+      });
+
+      // Subcategory Stacked Bars
+      topSubcats.forEach((sub, sIdx) => {
+        const color = SUBCAT_PALETTE[sIdx % SUBCAT_PALETTE.length];
+        const data = availYears.map(y => {
+          const divisor = (state.metricMode === 'AVG') ? (activeMap[y] || 12) : 1;
+          const sum = catTxs.filter(t => t.year === y && (t.subcategory || '미분류') === sub)
+                            .reduce((s, t) => s + Math.abs(t.amount), 0);
+          return sum / divisor;
+        });
+
+        datasets.push({
+          type: 'bar',
+          label: sub,
+          data: data,
+          backgroundColor: color,
+          stack: 'yoyStack',
+          borderRadius: 3,
+          order: 2,
+          yAxisID: 'y'
+        });
+      });
+
+      // Other subcategories if any
+      if (hasOther) {
+        const otherSubs = new Set(sortedSubcats.slice(7));
+        const otherData = availYears.map(y => {
+          const divisor = (state.metricMode === 'AVG') ? (activeMap[y] || 12) : 1;
+          const sum = catTxs.filter(t => t.year === y && otherSubs.has(t.subcategory || '미분류'))
+                            .reduce((s, t) => s + Math.abs(t.amount), 0);
+          return sum / divisor;
+        });
+        datasets.push({
+          type: 'bar',
+          label: '기타 소분류',
+          data: otherData,
+          backgroundColor: '#94A3B8',
+          stack: 'yoyStack',
+          borderRadius: 3,
+          order: 2,
+          yAxisID: 'y'
+        });
+      }
+
+      // Growth Rate Line (%) on Secondary Y-Axis
+      const yoyRates = availYears.map((y, idx) => {
+        if (idx === 0) return null; // First year baseline
+        const prevY = availYears[idx - 1];
+        const prevVal = yearlyTotals[prevY] || 0;
+        const currVal = yearlyTotals[y] || 0;
+        if (prevVal === 0) return 0;
+        return ((currVal - prevVal) / prevVal) * 100;
+      });
+
+      datasets.push({
+        type: 'line',
+        label: `${state.yoyCategory} 전년 대비 증감률 (%)`,
+        data: yoyRates,
+        borderColor: COLORS.navy,
+        backgroundColor: COLORS.navy,
+        borderWidth: 3,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        pointBackgroundColor: '#FFFFFF',
+        pointBorderColor: COLORS.navy,
+        pointBorderWidth: 2.5,
+        tension: 0.2,
+        order: 1,
+        yAxisID: 'yRate'
+      });
+
+    } else {
+      // --- Case 2: All 1-Level Categories Stacked (Default) ---
+      titleEl.textContent = `전체 대분류별 연도별 지출 비중 및 증감률 (YoY 복합차트)`;
+      subtitleEl.textContent = `1레벨 대분류별 연도별 지출 구성(스택 막대) 및 총지출 전년 대비 증감률(선 그래프)`;
+
+      const majorCats = ['식비', '구매비', '외식비', '교통비', '문화여가비', '의료/건강', '교육/학습/보육', '가족행사비', '고정비_주거_통신_보험', '기타지출'];
+
+      // Compute total spending per year
+      availYears.forEach(y => {
+        const divisor = (state.metricMode === 'AVG') ? (activeMap[y] || 12) : 1;
+        const ySum = txs.filter(t => t.year === y).reduce((s, t) => s + Math.abs(t.amount), 0);
+        yearlyTotals[y] = ySum / divisor;
+      });
+
+      // Major Category Stacked Bars
+      majorCats.forEach(cat => {
+        const color = getCategoryColor(cat);
+        const data = availYears.map(y => {
+          const divisor = (state.metricMode === 'AVG') ? (activeMap[y] || 12) : 1;
+          const sum = txs.filter(t => t.year === y && t.category === cat)
+                         .reduce((s, t) => s + Math.abs(t.amount), 0);
+          return sum / divisor;
+        });
+
+        datasets.push({
+          type: 'bar',
+          label: cat,
+          data: data,
+          backgroundColor: color,
+          stack: 'allCats',
+          borderRadius: 2,
+          order: 2,
+          yAxisID: 'y'
+        });
+      });
+
+      // Total Expenditure YoY Growth Rate Line (%) on Secondary Y-Axis
+      const totalYoYRates = availYears.map((y, idx) => {
+        if (idx === 0) return null;
+        const prevY = availYears[idx - 1];
+        const prevVal = yearlyTotals[prevY] || 0;
+        const currVal = yearlyTotals[y] || 0;
+        if (prevVal === 0) return 0;
+        return ((currVal - prevVal) / prevVal) * 100;
+      });
+
+      datasets.push({
+        type: 'line',
+        label: '총소비지출 전년 대비 증감률 (%)',
+        data: totalYoYRates,
+        borderColor: COLORS.navy,
+        backgroundColor: COLORS.navy,
+        borderWidth: 3,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        pointBackgroundColor: '#FFFFFF',
+        pointBorderColor: COLORS.navy,
+        pointBorderWidth: 2.5,
+        tension: 0.2,
+        order: 1,
+        yAxisID: 'yRate'
+      });
+    }
+
+    charts.yoyDetailCombo = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: availYears.map(y => `${y}년`),
@@ -1292,18 +1579,37 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { position: 'top', labels: { font: { family: 'Pretendard', weight: '700' } } },
+          legend: {
+            position: 'top',
+            labels: { font: { family: 'Pretendard', weight: '700', size: 11 }, usePointStyle: true }
+          },
           tooltip: {
-            callbacks: { label: ctx => `${ctx.dataset.label}: ${formatKRW(ctx.raw)}` }
+            callbacks: {
+              label: ctx => {
+                if (ctx.dataset.yAxisID === 'yRate') {
+                  return `${ctx.dataset.label}: ${ctx.raw !== null ? `${ctx.raw > 0 ? '+' : ''}${ctx.raw.toFixed(1)}%` : '-'}`;
+                }
+                const total = yearlyTotals[availYears[ctx.dataIndex]] || 1;
+                const pct = ((ctx.raw / total) * 100).toFixed(1);
+                return `${ctx.dataset.label}: ${formatKRW(ctx.raw)} (${pct}%)`;
+              }
+            }
           }
         },
         scales: {
           x: { stacked: true, grid: { display: false } },
           y: {
             stacked: true,
+            position: 'left',
             grid: { color: COLORS.border },
             ticks: { callback: val => formatCompactKRW(val) }
+          },
+          yRate: {
+            position: 'right',
+            grid: { display: false },
+            ticks: { callback: val => `${val > 0 ? '+' : ''}${val.toFixed(0)}%` }
           }
         }
       }
@@ -1387,7 +1693,7 @@
   }
 
   // ==========================================================================
-  // TAB 5: [☰ 항목별 지출·조회] (Category Drilldown & Explorer)
+  // TAB 5: [☰ 항목별 지출·조회] (Category Drilldown & Explorer) (Annotations 1, 2, 3)
   // ==========================================================================
   function renderTabExplorer() {
     renderCategoryDrilldown();
@@ -1398,11 +1704,10 @@
 
   function renderCategoryDrilldown() {
     const donutCtx = document.getElementById('drilldownDonutChart');
-    const barCtx = document.getElementById('drilldownNestedBarChart');
-    if (!donutCtx || !barCtx) return;
+    const badgeEl = document.getElementById('donutSelectedBadge');
+    if (!donutCtx) return;
 
     if (charts.drilldownDonut) charts.drilldownDonut.destroy();
-    if (charts.drilldownBar) charts.drilldownBar.destroy();
 
     const txs = getFilteredTransactions().filter(t => t.type === '지출');
 
@@ -1417,8 +1722,26 @@
     const topCats = sortedCats.slice(0, 8);
     const topVals = topCats.map(c => catSums[c]);
 
-    if (!topCats.includes(state.drilldownCategory)) {
-      state.drilldownCategory = topCats[0] || '식비';
+    // Donut Colors mapped from unified palette
+    const sliceColors = topCats.map(c => getCategoryColor(c));
+
+    // Highlight selected slice
+    const offsets = topCats.map(c => (state.drilldownCategory === c ? 14 : 0));
+    const borderColors = topCats.map(c => (state.drilldownCategory === c ? '#001A66' : '#FFFFFF'));
+    const borderWidths = topCats.map(c => (state.drilldownCategory === c ? 3 : 2));
+
+    // Update Donut Active Badge
+    if (badgeEl) {
+      if (state.drilldownCategory) {
+        badgeEl.style.display = 'inline-flex';
+        badgeEl.textContent = `${state.drilldownCategory} 선택됨`;
+        const col = getCategoryColor(state.drilldownCategory);
+        badgeEl.style.backgroundColor = `${col}20`;
+        badgeEl.style.color = col;
+        badgeEl.style.border = `1px solid ${col}`;
+      } else {
+        badgeEl.style.display = 'none';
+      }
     }
 
     // Donut Chart
@@ -1428,18 +1751,10 @@
         labels: topCats,
         datasets: [{
           data: topVals,
-          backgroundColor: [
-            COLORS.primary,
-            COLORS.coral,
-            COLORS.purple,
-            COLORS.emerald,
-            COLORS.amber,
-            COLORS.cyan,
-            COLORS.slate,
-            '#8B5CF6'
-          ],
-          borderWidth: 2,
-          borderColor: '#FFFFFF'
+          backgroundColor: sliceColors,
+          borderWidth: borderWidths,
+          borderColor: borderColors,
+          offset: offsets
         }]
       },
       options: {
@@ -1448,8 +1763,19 @@
         onClick: (event, elements) => {
           if (elements && elements.length > 0) {
             const index = elements[0].index;
-            state.drilldownCategory = topCats[index];
-            updateNestedSubcategoryBar();
+            const clickedCat = topCats[index];
+            if (state.drilldownCategory === clickedCat) {
+              state.drilldownCategory = null; // Toggle off to view all
+              state.explorer.category = 'ALL';
+            } else {
+              state.drilldownCategory = clickedCat;
+              state.explorer.category = clickedCat; // Link with explorer table (Annotation 1)
+            }
+            state.explorer.page = 1;
+            const catSelect = document.getElementById('explorerCategoryFilter');
+            if (catSelect) catSelect.value = state.explorer.category;
+            renderCategoryDrilldown();
+            renderExplorerTable();
           }
         },
         plugins: {
@@ -1467,56 +1793,116 @@
       }
     });
 
-    updateNestedSubcategoryBar();
+    updateNestedSubcategoryBar(topCats, topVals);
   }
 
-  function updateNestedSubcategoryBar() {
+  // Nested Bar Chart (Annotation 2 & Annotation 3)
+  function updateNestedSubcategoryBar(topCats, topVals) {
     const barCtx = document.getElementById('drilldownNestedBarChart');
     const titleEl = document.getElementById('drilldownNestedTitle');
+    const subtitleEl = document.getElementById('drilldownNestedSubtitle');
+    const resetBtn = document.getElementById('btnResetDrilldown');
     if (!barCtx) return;
-
-    if (titleEl) {
-      titleEl.textContent = `[${state.drilldownCategory}] 세부 소분류 지출 분석`;
-    }
 
     if (charts.drilldownBar) charts.drilldownBar.destroy();
 
-    const txs = getFilteredTransactions().filter(t => t.type === '지출' && t.category === state.drilldownCategory);
+    if (!state.drilldownCategory) {
+      // --- Annotation 3: Default View when no category is selected -> Show 1-Level Major Categories ---
+      if (titleEl) titleEl.textContent = '전체 대분류별 지출 분석 (1레벨 랭킹)';
+      if (subtitleEl) subtitleEl.textContent = '각 대분류별 지출 규모 · 좌측 도넛 차트의 특정 카테고리를 클릭하면 세부 소분류로 드릴다운됩니다.';
+      if (resetBtn) resetBtn.style.display = 'none';
 
-    const subcatSums = {};
-    txs.forEach(t => {
-      const sub = t.subcategory || '미분류';
-      subcatSums[sub] = (subcatSums[sub] || 0) + Math.abs(t.amount);
-    });
+      const barColors = topCats.map(c => getCategoryColor(c));
 
-    const sortedSubs = Object.keys(subcatSums).sort((a,b) => subcatSums[b] - subcatSums[a]).slice(0, 8);
-    const subVals = sortedSubs.map(s => subcatSums[s]);
-
-    charts.drilldownBar = new Chart(barCtx, {
-      type: 'bar',
-      data: {
-        labels: sortedSubs,
-        datasets: [{
-          label: '지출 금액',
-          data: subVals,
-          backgroundColor: COLORS.primary,
-          borderRadius: 4
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: ctx => `${ctx.label}: ${formatKRW(ctx.raw)}` } }
+      charts.drilldownBar = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+          labels: topCats,
+          datasets: [{
+            label: '대분류 지출 금액',
+            data: topVals,
+            backgroundColor: barColors,
+            borderRadius: 4
+          }]
         },
-        scales: {
-          x: { grid: { color: COLORS.border }, ticks: { callback: val => formatCompactKRW(val) } },
-          y: { grid: { display: false } }
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          onClick: (event, elements) => {
+            if (elements && elements.length > 0) {
+              const index = elements[0].index;
+              state.drilldownCategory = topCats[index];
+              state.explorer.category = state.drilldownCategory;
+              state.explorer.page = 1;
+              const catSelect = document.getElementById('explorerCategoryFilter');
+              if (catSelect) catSelect.value = state.explorer.category;
+              renderCategoryDrilldown();
+              renderExplorerTable();
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => `${ctx.label}: ${formatKRW(ctx.raw)} (클릭 시 소분류 드릴다운)` } }
+          },
+          scales: {
+            x: { grid: { color: COLORS.border }, ticks: { callback: val => formatCompactKRW(val) } },
+            y: { grid: { display: false } }
+          }
         }
+      });
+
+    } else {
+      // --- Annotation 2: Specific Category Selected -> Bar chart matches EXACT category color! ---
+      const categoryColor = getCategoryColor(state.drilldownCategory);
+
+      if (titleEl) {
+        titleEl.innerHTML = `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${categoryColor}; margin-right:6px;"></span>[${state.drilldownCategory}] 세부 소분류 지출 분석`;
       }
-    });
+      if (subtitleEl) {
+        subtitleEl.textContent = `도넛 차트의 다른 카테고리를 클릭하거나 초기화 버튼으로 전체보기가 가능합니다.`;
+      }
+      if (resetBtn) {
+        resetBtn.style.display = 'inline-flex';
+      }
+
+      const txs = getFilteredTransactions().filter(t => t.type === '지출' && t.category === state.drilldownCategory);
+
+      const subcatSums = {};
+      txs.forEach(t => {
+        const sub = t.subcategory || '미분류';
+        subcatSums[sub] = (subcatSums[sub] || 0) + Math.abs(t.amount);
+      });
+
+      const sortedSubs = Object.keys(subcatSums).sort((a,b) => subcatSums[b] - subcatSums[a]).slice(0, 8);
+      const subVals = sortedSubs.map(s => subcatSums[s]);
+
+      charts.drilldownBar = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+          labels: sortedSubs,
+          datasets: [{
+            label: '세부 소분류 지출',
+            data: subVals,
+            backgroundColor: categoryColor, // EXACT SAME COLOR as category in donut chart!
+            borderRadius: 4
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => `${ctx.label}: ${formatKRW(ctx.raw)}` } }
+          },
+          scales: {
+            x: { grid: { color: COLORS.border }, ticks: { callback: val => formatCompactKRW(val) } },
+            y: { grid: { display: false } }
+          }
+        }
+      });
+    }
   }
 
   function renderPaymentMethodShare() {
@@ -1592,6 +1978,7 @@
     `).join('');
   }
 
+  // Transaction Explorer Table (Annotation 1: Linked to Drilldown Category)
   function renderExplorerTable() {
     const tableBody = document.getElementById('explorerTableBody');
     const countEl = document.getElementById('explorerTotalCount');
@@ -1599,17 +1986,56 @@
     const pageNumEl = document.getElementById('explorerPageNum');
     const btnPrev = document.getElementById('btnPrevPage');
     const btnNext = document.getElementById('btnNextPage');
+    const activeTagWrap = document.getElementById('explorerActiveCategoryTag');
+    const activeTagName = document.getElementById('explorerCategoryTagName');
+    const subtitleEl = document.getElementById('explorerSubtitle');
+    const catSelect = document.getElementById('explorerCategoryFilter');
     if (!tableBody) return;
 
     let filtered = getFilteredTransactions();
 
-    // Secondary filters within explorer
+    // 1. Linked Category Filter (Annotation 1)
+    if (state.explorer.category && state.explorer.category !== 'ALL') {
+      filtered = filtered.filter(t => t.category === state.explorer.category);
+
+      if (activeTagWrap && activeTagName) {
+        activeTagWrap.style.display = 'inline-flex';
+        activeTagName.textContent = `대분류: ${state.explorer.category}`;
+        const color = getCategoryColor(state.explorer.category);
+        const pill = document.getElementById('btnRemoveExplorerCategory');
+        if (pill) {
+          pill.style.backgroundColor = `${color}18`;
+          pill.style.color = color;
+          pill.style.border = `1px solid ${color}`;
+        }
+      }
+      if (subtitleEl) {
+        subtitleEl.textContent = `[${state.explorer.category}] 대분류 드릴다운 연동 필터링 적용 중`;
+      }
+      if (catSelect) {
+        catSelect.value = state.explorer.category;
+      }
+    } else {
+      if (activeTagWrap) activeTagWrap.style.display = 'none';
+      if (subtitleEl) {
+        subtitleEl.textContent = '10,780건 전체 데이터 실시간 검색 및 상단 대분류 드릴다운 연동 필터링';
+      }
+      if (catSelect) {
+        catSelect.value = 'ALL';
+      }
+    }
+
+    // 2. Secondary Type Filter within Explorer
     if (state.explorer.type !== 'ALL') {
       filtered = filtered.filter(t => t.type === state.explorer.type);
     }
+
+    // 3. Payment Filter within Explorer
     if (state.explorer.payment !== 'ALL') {
       filtered = filtered.filter(t => t.payment === state.explorer.payment);
     }
+
+    // 4. Keyword Search
     if (state.explorer.search) {
       const q = state.explorer.search;
       filtered = filtered.filter(t => 
@@ -1656,12 +2082,13 @@
       else if (r.type === '지출') typeBadgeClass = 'sol-badge-coral';
 
       const amtClass = r.type === '수입' ? 'num-income' : r.type === '지출' ? 'num-expense' : 'num-invest';
+      const catColor = getCategoryColor(r.category);
 
       return `
         <tr>
           <td>${r.date}</td>
           <td><span class="sol-badge ${typeBadgeClass}">${r.type}</span></td>
-          <td>${r.category}</td>
+          <td><span style="font-weight:700; color:${catColor};">${r.category}</span></td>
           <td style="color:var(--text-secondary);">${r.subcategory || '-'}</td>
           <td><strong>${r.merchant}</strong></td>
           <td class="text-right font-bold ${amtClass}">${formatKRW(r.amount)}</td>
