@@ -667,27 +667,96 @@
   </main>
 
   <!-- ==========================================================================
-       Modal Dialog: Data Upload / Management
+       Modal Dialog: Data Upload / Management / ZIP Auto-Sync
        ========================================================================== -->
   <div class="sol-modal-backdrop" id="uploadModal">
-    <div class="sol-modal">
+    <div class="sol-modal" style="max-width: 580px;">
       <div class="sol-modal-header">
-        <h3>데이터 관리 및 2027+ 확장 업데이트</h3>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="display:inline-flex; width:32px; height:32px; border-radius:8px; background:rgba(0,70,255,0.1); color:var(--color-primary-500); align-items:center; justify-content:center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          </span>
+          <div>
+            <h3 style="margin:0; font-size:17px; font-weight:800; color:var(--text-primary);">가계부 데이터 등록 및 자동 동기화</h3>
+            <span style="font-size:11px; color:var(--text-tertiary);">암호화된 ZIP 또는 엑셀(XLSX) 파일을 업로드하면 대시보드에 즉시 반영됩니다.</span>
+          </div>
+        </div>
         <button class="btn-close-modal" id="btnCloseModal">&times;</button>
       </div>
-      <div style="font-size:13px; color:var(--text-secondary); margin-bottom:16px; line-height:1.6;">
-        신규 연도(2027년 이상) 데이터가 추가된 <code>finance_data.json</code> 파일 또는 구글 시트 추출 파일을 드래그하여 업로드하면 대시보드가 즉시 자동 확장되어 갱신됩니다.
+
+      <!-- File Dropzone -->
+      <div class="dropzone" id="fileDropzone" style="margin-bottom:14px;">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary-500)" stroke-width="2" style="margin:0 auto 8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <p style="margin:0 0 4px; font-weight:700; color:var(--text-primary);" id="dropzoneText">클릭하여 파일을 선택하거나 이곳으로 드래그하세요</p>
+        <span style="font-size:11px; color:var(--text-tertiary);">지원 포맷: 뱅크샐러드 ZIP (.zip), 엑셀 (.xlsx), JSON (.json)</span>
+        <input type="file" id="fileInput" accept=".zip,.xlsx,.json" style="display:none;">
       </div>
-      <div class="dropzone" id="fileDropzone">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary-500)" stroke-width="2" style="margin:0 auto;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-        <p><strong>클릭하여 파일을 선택</strong>하거나 이곳으로 드래그 앤 드롭하세요</p>
-        <span style="font-size:11px; color:var(--text-tertiary);">지원 포맷: .json (finance_data.json)</span>
-        <input type="file" id="fileInput" accept=".json" style="display:none;">
+
+      <!-- Selected File Info (hidden initially) -->
+      <div id="selectedFileInfo" style="display:none; padding:10px 14px; background:var(--bg-subtle); border-radius:8px; border:1px solid var(--border-default); margin-bottom:14px; font-size:12px; align-items:center; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-weight:700; color:var(--color-primary-500);">선택 파일:</span>
+          <span id="selectedFileName" style="font-weight:600; color:var(--text-primary);"></span>
+          <span id="selectedFileSize" style="color:var(--text-tertiary);"></span>
+        </div>
+        <button id="btnRemoveSelectedFile" style="background:none; border:none; color:var(--color-danger); cursor:pointer; font-size:11px; font-weight:700;">삭제</button>
+      </div>
+
+      <!-- Password Input for Encrypted ZIP -->
+      <div id="zipPasswordContainer" style="margin-bottom:14px;">
+        <label style="display:block; font-size:12px; font-weight:700; margin-bottom:6px; color:var(--text-primary);">
+          ZIP 압축 해제 비밀번호
+          <span style="font-weight:400; color:var(--text-tertiary); margin-left:4px;">(기본 비밀번호: 1814)</span>
+        </label>
+        <div style="position:relative; display:flex; align-items:center;">
+          <input type="password" id="zipPasswordInput" value="1814" placeholder="비밀번호 입력 (기본값: 1814)" style="width:100%; padding:9px 40px 9px 12px; border:1px solid var(--border-default); border-radius:8px; font-size:13px; font-family:inherit;">
+          <button type="button" id="btnTogglePassword" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; color:var(--text-tertiary); padding:4px;" title="비밀번호 보기/숨기기">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Button -->
+      <div style="display:flex; gap:10px; margin-bottom:14px;">
+        <button class="btn-sol-primary" id="btnProcessUpload" style="flex:1; padding:11px; justify-content:center; font-size:13px; font-weight:700;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span>데이터 동기화 및 대시보드 반영</span>
+        </button>
+      </div>
+
+      <!-- Live Sync Status Banner -->
+      <div id="uploadStatusBox" style="display:none; padding:12px; border-radius:8px; font-size:12px; margin-bottom:14px; line-height:1.5;"></div>
+
+      <!-- Google Drive & Cloud Database Guide -->
+      <div style="background:var(--bg-subtle); border:1px solid var(--border-default); border-radius:10px; padding:14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+          <strong style="font-size:12px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary-500)" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>
+            구글 드라이브 데이터베이스 연동 안내
+          </strong>
+          <a href="https://docs.google.com/spreadsheets/d/1743PbqYCLrt-bMSzvHitI79EFMeBsjAeF2y53hwLgrQ/edit?usp=sharing" target="_blank" style="font-size:11px; font-weight:700; color:var(--color-primary-500); text-decoration:none;">
+            구글 시트 바로가기 ↗
+          </a>
+        </div>
+        <p style="font-size:11px; color:var(--text-secondary); margin:0 0 8px; line-height:1.5;">
+          웹 대시보드는 등록 시 즉시 브라우저 저장소(LocalStorage)에 동기화되어 새로고침 후에도 유지됩니다. 원본 구글 스프레드시트 업데이트는 압축 해제된 엑셀 시트(<code>가계부 내역</code> &rarr; <code>2026_수입지출</code>, <code>뱅샐현황</code> &rarr; <code>2026</code>)에 복사하거나 아래 백업 파일을 사용하실 수 있습니다.
+        </p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button id="btnDownloadBackupJson" class="btn-sol-ghost" style="font-size:11px; padding:5px 10px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            최신 finance_data.json 다운로드
+          </button>
+          <button id="btnResetToDefaultData" class="btn-sol-ghost" style="font-size:11px; padding:5px 10px; color:var(--color-danger); border-color:rgba(255,90,95,0.3);">
+            기본 원본 데이터로 복원
+          </button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Scripts: Local chart.umd.min.js and finance_data.js -->
+  <!-- Scripts: Local zip.min.js, xlsx.full.min.js, chart.umd.min.js and finance_data.js -->
+  <script src="zip.min.js"></script>
+  <script src="xlsx.full.min.js"></script>
   <script src="chart.umd.min.js"></script>
   <script src="finance_data.js"></script>
   <script src="app.js"></script>

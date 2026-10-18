@@ -271,6 +271,16 @@
 
   // --- Dynamic Initialization ---
   function init() {
+    try {
+      const cached = localStorage.getItem('SOL_FINANCE_DATA_OVERRIDE');
+      if (cached) {
+        window.FINANCE_DATA = JSON.parse(cached);
+        console.log('Loaded user synchronized finance data from LocalStorage:', window.FINANCE_DATA.transactions.length);
+      }
+    } catch (e) {
+      console.warn('Could not read cached override:', e);
+    }
+
     if (!window.FINANCE_DATA) {
       console.error('FINANCE_DATA not found. Trying to fetch finance_data.json...');
       fetch('finance_data.json')
@@ -570,37 +580,8 @@
       });
     }
 
-    // File Upload Modal
-    const btnOpenUpload = document.getElementById('btnOpenUpload');
-    const modalBackdrop = document.getElementById('uploadModal');
-    const btnCloseModal = document.getElementById('btnCloseModal');
-    if (btnOpenUpload && modalBackdrop && btnCloseModal) {
-      btnOpenUpload.addEventListener('click', () => modalBackdrop.classList.add('open'));
-      btnCloseModal.addEventListener('click', () => modalBackdrop.classList.remove('open'));
-      modalBackdrop.addEventListener('click', e => {
-        if (e.target === modalBackdrop) modalBackdrop.classList.remove('open');
-      });
-    }
-
-    // Drag and Drop File Upload
-    const dropzone = document.getElementById('fileDropzone');
-    const fileInput = document.getElementById('fileInput');
-    if (dropzone && fileInput) {
-      dropzone.addEventListener('click', () => fileInput.click());
-      dropzone.addEventListener('dragover', e => {
-        e.preventDefault();
-        dropzone.classList.add('dragover');
-      });
-      dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-      dropzone.addEventListener('drop', e => {
-        e.preventDefault();
-        dropzone.classList.remove('dragover');
-        if (e.dataTransfer.files.length) handleFileLoad(e.dataTransfer.files[0]);
-      });
-      fileInput.addEventListener('change', e => {
-        if (e.target.files.length) handleFileLoad(e.target.files[0]);
-      });
-    }
+    // Setup Dataset Upload & Sync Modal
+    setupUploadModalListeners();
   }
 
   function switchTab(tabId) {
@@ -2901,24 +2882,497 @@
     }).join('');
   }
 
-  // --- File Upload / Refresh Handler ---
-  function handleFileLoad(file) {
-    if (file.name.endsWith('.json')) {
-      const reader = new FileReader();
-      reader.onload = e => {
-        try {
-          const parsed = JSON.parse(e.target.result);
-          window.FINANCE_DATA = parsed;
-          document.getElementById('uploadModal').classList.remove('open');
-          alert('재무 데이터가 성공적으로 업데이트되었습니다.');
-          bootstrap();
-        } catch (err) {
-          alert('JSON 파싱 오류: ' + err.message);
+  // --- File Upload & ZIP Auto-Sync Engine ---
+  let selectedUploadFile = null;
+
+  function parseCellDateStr(val) {
+    if (!val) return '';
+    if (typeof val === 'number') {
+      const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+      return d.toISOString().slice(0, 10);
+    }
+    const s = String(val).trim();
+    const m = s.match(/(\d{4})[-./\s]+(\d{1,2})[-./\s]+(\d{1,2})/);
+    if (m) {
+      return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    }
+    return s;
+  }
+
+  function parseCellTimeStr(val) {
+    if (!val) return '00:00';
+    if (typeof val === 'number') {
+      const totalSec = Math.round(val * 86400);
+      const h = Math.floor(totalSec / 3600) % 24;
+      const m = Math.floor((totalSec % 3600) / 60);
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+    const s = String(val).trim();
+    const m = s.match(/(\d{1,2}):(\d{2})/);
+    if (m) {
+      return `${m[1].padStart(2, '0')}:${m[2]}`;
+    }
+    return s;
+  }
+
+  function setupUploadModalListeners() {
+    const btnOpenUpload = document.getElementById('btnOpenUpload');
+    const modalBackdrop = document.getElementById('uploadModal');
+    const btnCloseModal = document.getElementById('btnCloseModal');
+    const dropzone = document.getElementById('fileDropzone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('selectedFileInfo');
+    const fileNameEl = document.getElementById('selectedFileName');
+    const fileSizeEl = document.getElementById('selectedFileSize');
+    const btnRemove = document.getElementById('btnRemoveSelectedFile');
+    const pwdInput = document.getElementById('zipPasswordInput');
+    const btnTogglePwd = document.getElementById('btnTogglePassword');
+    const btnProcess = document.getElementById('btnProcessUpload');
+    const statusBox = document.getElementById('uploadStatusBox');
+    const btnBackup = document.getElementById('btnDownloadBackupJson');
+    const btnReset = document.getElementById('btnResetToDefaultData');
+
+    if (!modalBackdrop) return;
+
+    if (btnOpenUpload) {
+      btnOpenUpload.addEventListener('click', () => {
+        modalBackdrop.classList.add('open');
+        if (statusBox) statusBox.style.display = 'none';
+      });
+    }
+
+    if (btnCloseModal) {
+      btnCloseModal.addEventListener('click', () => modalBackdrop.classList.remove('open'));
+    }
+
+    modalBackdrop.addEventListener('click', e => {
+      if (e.target === modalBackdrop) modalBackdrop.classList.remove('open');
+    });
+
+    if (btnTogglePwd && pwdInput) {
+      btnTogglePwd.addEventListener('click', () => {
+        pwdInput.type = pwdInput.type === 'password' ? 'text' : 'password';
+      });
+    }
+
+    function setSelectedFile(file) {
+      selectedUploadFile = file;
+      if (fileInfo && fileNameEl && fileSizeEl) {
+        fileInfo.style.display = 'flex';
+        fileNameEl.textContent = file.name;
+        fileSizeEl.textContent = `(${(file.size / 1024).toFixed(1)} KB)`;
+      }
+      if (dropzone) dropzone.style.display = 'none';
+      if (statusBox) statusBox.style.display = 'none';
+    }
+
+    function clearSelectedFile() {
+      selectedUploadFile = null;
+      if (fileInput) fileInput.value = '';
+      if (fileInfo) fileInfo.style.display = 'none';
+      if (dropzone) dropzone.style.display = 'block';
+      if (statusBox) statusBox.style.display = 'none';
+    }
+
+    if (btnRemove) {
+      btnRemove.addEventListener('click', clearSelectedFile);
+    }
+
+    if (dropzone && fileInput) {
+      dropzone.addEventListener('click', () => fileInput.click());
+      dropzone.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+      dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+      dropzone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+          setSelectedFile(e.dataTransfer.files[0]);
         }
-      };
-      reader.readAsText(file);
-    } else {
-      alert('현재 브라우저에서는 JSON 형식의 데이터를 직접 가져올 수 있습니다. (서버 측 파서 재실행 지원)');
+      });
+      fileInput.addEventListener('change', e => {
+        if (e.target.files.length) {
+          setSelectedFile(e.target.files[0]);
+        }
+      });
+    }
+
+    if (btnProcess) {
+      btnProcess.addEventListener('click', async () => {
+        if (!selectedUploadFile) {
+          alert('먼저 등록할 파일(.zip, .xlsx, .json)을 선택해주세요.');
+          return;
+        }
+        const pwd = pwdInput ? pwdInput.value.trim() : '1814';
+        await processDatasetUpload(selectedUploadFile, pwd);
+      });
+    }
+
+    if (btnBackup) {
+      btnBackup.addEventListener('click', () => {
+        const jsonStr = JSON.stringify(window.FINANCE_DATA, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `finance_data_backup_${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+
+    if (btnReset) {
+      btnReset.addEventListener('click', () => {
+        if (confirm('로컬에 저장된 사용자 업로드 데이터를 초기화하고 원본 데이터로 복원하시겠습니까?')) {
+          localStorage.removeItem('SOL_FINANCE_DATA_OVERRIDE');
+          location.reload();
+        }
+      });
+    }
+  }
+
+  async function processDatasetUpload(file, password) {
+    const statusBox = document.getElementById('uploadStatusBox');
+    const btnProcess = document.getElementById('btnProcessUpload');
+
+    function setStatus(html, type = 'info') {
+      if (!statusBox) return;
+      statusBox.style.display = 'block';
+      if (type === 'error') {
+        statusBox.style.background = 'rgba(255, 90, 95, 0.1)';
+        statusBox.style.color = '#DC2626';
+        statusBox.style.border = '1px solid rgba(255, 90, 95, 0.4)';
+      } else if (type === 'success') {
+        statusBox.style.background = 'rgba(16, 185, 129, 0.1)';
+        statusBox.style.color = '#059669';
+        statusBox.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+      } else {
+        statusBox.style.background = 'rgba(0, 70, 255, 0.08)';
+        statusBox.style.color = 'var(--color-primary-500)';
+        statusBox.style.border = '1px solid rgba(0, 70, 255, 0.2)';
+      }
+      statusBox.innerHTML = html;
+    }
+
+    try {
+      if (btnProcess) btnProcess.disabled = true;
+
+      let workbook = null;
+
+      if (file.name.endsWith('.json')) {
+        setStatus('JSON 파일을 읽는 중...');
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        window.FINANCE_DATA = parsed;
+        localStorage.setItem('SOL_FINANCE_DATA_OVERRIDE', JSON.stringify(window.FINANCE_DATA));
+        bootstrap();
+        setStatus('✅ JSON 데이터가 성공적으로 반영되었습니다!', 'success');
+        return;
+      }
+
+      if (file.name.endsWith('.zip')) {
+        setStatus('📦 1단계: 암호화된 ZIP 압축 해제 중 (비밀번호 확인)...');
+        if (typeof zip === 'undefined') {
+          throw new Error('ZIP 압축 해제 라이브러리가 로드되지 않았습니다.');
+        }
+
+        const zipReader = new zip.ZipReader(new zip.BlobReader(file), { password: password });
+        let entries;
+        try {
+          entries = await zipReader.getEntries();
+        } catch (e) {
+          throw new Error('ZIP 파일 읽기 실패: ' + e.message);
+        }
+
+        const xlsxEntry = entries.find(e => e.filename.toLowerCase().endsWith('.xlsx'));
+        if (!xlsxEntry) {
+          await zipReader.close();
+          throw new Error('ZIP 파일 내에 엑셀(.xlsx) 파일이 존재하지 않습니다.');
+        }
+
+        let arrayBuffer;
+        try {
+          const uint8 = await xlsxEntry.getData(new zip.Uint8ArrayWriter());
+          arrayBuffer = uint8.buffer;
+        } catch (err) {
+          await zipReader.close();
+          throw new Error(`비밀번호가 일치하지 않거나 압축 해제에 실패했습니다. (입력한 비밀번호: ${password})`);
+        }
+        await zipReader.close();
+
+        setStatus(`📊 2단계: 엑셀 파일(${xlsxEntry.filename}) 파싱 중...`);
+        if (typeof XLSX === 'undefined') {
+          throw new Error('엑셀 파싱 라이브러리(SheetJS)가 로드되지 않았습니다.');
+        }
+        workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      } else if (file.name.endsWith('.xlsx')) {
+        setStatus('📊 1단계: 엑셀 파일 파싱 중...');
+        const arrayBuffer = await file.arrayBuffer();
+        if (typeof XLSX === 'undefined') {
+          throw new Error('엑셀 파싱 라이브러리(SheetJS)가 로드되지 않았습니다.');
+        }
+        workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      } else {
+        throw new Error('.zip, .xlsx, .json 파일만 업로드 가능합니다.');
+      }
+
+      if (!workbook || !workbook.Sheets) {
+        throw new Error('유효한 엑셀 시트를 찾을 수 없습니다.');
+      }
+
+      // 3. Parse transactions from '가계부 내역'
+      const txSheetName = workbook.SheetNames.find(s => s.includes('가계부') || s.includes('내역') || s.includes('수입지출'));
+      if (!txSheetName) {
+        throw new Error("'가계부 내역' 시트를 찾을 수 없습니다.");
+      }
+
+      const rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[txSheetName], { header: 1, raw: false });
+      if (rawRows.length < 2) {
+        throw new Error('가계부 내역에 거래 데이터가 존재하지 않습니다.');
+      }
+
+      setStatus('🔄 3단계: 거래내역 및 재무현황 분석 중...');
+      const reimbItems = new Set(['기타수입_출장비환급', '기타수입_엔빵환급', '기타수입_카드취소환급', '기타수입_보험비환급']);
+      const newTxs = [];
+
+      for (let r = 1; r < rawRows.length; r++) {
+        const row = rawRows[r];
+        if (!row || !row[0]) continue;
+        const dStr = parseCellDateStr(row[0]);
+        const tStr = parseCellTimeStr(row[1]);
+        const txType = row[2] ? String(row[2]).trim() : '';
+        const cat = row[3] ? String(row[3]).trim() : '';
+        const subcat = row[4] ? String(row[4]).trim() : '';
+        const merchant = row[5] ? String(row[5]).trim() : '';
+        const amtRaw = parseFloat(String(row[6] || 0).replace(/,/g, ''));
+        const amount = isNaN(amtRaw) ? 0 : amtRaw;
+        const curr = row[7] ? String(row[7]).trim() : 'KRW';
+        const pm = row[8] ? String(row[8]).trim() : '';
+        const memo = row[9] ? String(row[9]).trim() : '';
+
+        if (!dStr) continue;
+
+        const ym = dStr.slice(0, 7);
+        const year = dStr.slice(0, 4);
+        const mNum = parseInt(ym.slice(5, 7), 10) || 1;
+        const qStr = `Q${Math.floor((mNum - 1) / 3) + 1}`;
+
+        const isReimbursement = (txType === '수입' && (reimbItems.has(cat) || reimbItems.has(subcat)));
+        const isRealIncome = (txType === '수입' && !isReimbursement);
+        const isPureInvestment = (txType === '이체' && cat === '투자');
+        const isReconciliation = (cat === '미분류' && (merchant === '자산 추가' || merchant === '차액'));
+
+        let entity = 'Shared';
+        const comb = `${cat} ${subcat} ${merchant} ${memo} ${pm}`;
+        if (/초원|쵼니|초원이용품|초원 미래에셋|초원이 농협은행|초원간식|초원취미/.test(comb)) {
+          entity = 'Chowon';
+        } else if (/현정|조현정|현정급여|현정자금|현정친구|현정취미|현정ISA/.test(comb)) {
+          entity = 'Hyeonjeong';
+        } else if (/한영흠|영흠|흠 취미|흠취미|흠 강습비|흠회사식사|흠진료|흠 부가급여|흠 비정기|흠 월정기/.test(comb)) {
+          entity = 'Yeongheum';
+        } else if (isPureInvestment && (/한영흠/.test(comb) || /신한 주거래/.test(pm))) {
+          entity = 'Yeongheum';
+        }
+
+        newTxs.push({
+          id: 0,
+          date: dStr,
+          time: tStr,
+          type: txType,
+          category: cat,
+          subcategory: subcat,
+          merchant: merchant,
+          amount: amount,
+          currency: curr,
+          payment: pm,
+          memo: memo,
+          year: year,
+          yearMonth: ym,
+          quarter: qStr,
+          month: mNum,
+          isReimbursement: isReimbursement,
+          isRealIncome: isRealIncome,
+          isPureInvestment: isPureInvestment,
+          isReconciliation: isReconciliation,
+          entity: entity
+        });
+      }
+
+      const yearsInNew = Array.from(new Set(newTxs.map(t => t.year).filter(Boolean))).sort();
+      const targetYear = yearsInNew[yearsInNew.length - 1] || '2026';
+
+      // Compare with existing target year txs
+      const oldTargetTxs = (window.FINANCE_DATA.transactions || []).filter(t => t.year === targetYear);
+      const existingKeySet = new Set(
+        oldTargetTxs.map(t => `${t.date}|${t.time}|${t.type}|${t.category}|${t.subcategory}|${t.merchant}|${Math.round(t.amount)}|${t.payment}`)
+      );
+
+      let newCount = 0;
+      newTxs.forEach(t => {
+        const k = `${t.date}|${t.time}|${t.type}|${t.category}|${t.subcategory}|${t.merchant}|${Math.round(t.amount)}|${t.payment}`;
+        if (!existingKeySet.has(k)) newCount++;
+      });
+
+      // Merge transactions
+      const historicalTxs = (window.FINANCE_DATA.transactions || []).filter(t => t.year !== targetYear);
+      const combinedTxs = historicalTxs.concat(newTxs);
+      combinedTxs.sort((a, b) => {
+        if (a.date !== b.date) return b.date.localeCompare(a.date);
+        return (b.time || '').localeCompare(a.time || '');
+      });
+      combinedTxs.forEach((t, i) => t.id = i + 1);
+
+      window.FINANCE_DATA.transactions = combinedTxs;
+
+      // 4. Parse '뱅샐현황' if present
+      const sumSheetName = workbook.SheetNames.find(s => s.includes('뱅샐') || s.includes('현황') || s === targetYear);
+      if (sumSheetName) {
+        const sumRows = XLSX.utils.sheet_to_json(workbook.Sheets[sumSheetName], { header: 1, raw: false });
+        const cfItems = [];
+        const bsItems = [];
+        const insItems = [];
+        const invItems = [];
+
+        // Month columns in row 11
+        const monthCols = [];
+        const r11 = sumRows[10] || [];
+        for (let c = 4; c < 16; c++) {
+          const h = String(r11[c] || '');
+          if (h.startsWith(targetYear)) monthCols.push({ key: h, col: c });
+        }
+
+        let section = null;
+        let currBsCat = '';
+
+        for (let r = 0; r < sumRows.length; r++) {
+          const row = sumRows[r] || [];
+          const b = String(row[1] || '').trim();
+          if (b === '2.현금흐름현황') { section = 'CF'; continue; }
+          if (b === '3.재무현황') { section = 'BS'; continue; }
+          if (b === '4.보험현황') { section = 'INS'; continue; }
+          if (b === '5.투자현황') { section = 'INV'; continue; }
+          if (b === '6.대출현황') { section = 'LOAN'; continue; }
+
+          if (section === 'CF') {
+            if (['항목', '최근 1년 동안의 현금흐름을 분석합니다.', ''].includes(b)) continue;
+            const monthsVal = {};
+            let rowSum = 0;
+            monthCols.forEach(mc => {
+              const v = parseFloat(String(row[mc.col] || 0).replace(/,/g, '')) || 0;
+              monthsVal[mc.key] = v;
+              rowSum += v;
+            });
+            const numM = monthCols.length || 1;
+            cfItems.push({
+              item: b,
+              total: rowSum,
+              monthlyAvg: rowSum / numM,
+              months: monthsVal
+            });
+          } else if (section === 'BS') {
+            if (['자산', '항목', '데이터를 내보낸 시점의 자산과 부채 상태를 분석합니다.'].includes(b)) continue;
+            const c = String(row[2] || '').trim();
+            const eRaw = parseFloat(String(row[4] || 0).replace(/,/g, '')) || 0;
+            if (b && !['자산', '항목', '총자산', '순자산', '부채'].includes(b)) currBsCat = b;
+            if (currBsCat || c || eRaw > 0) {
+              if (b === '총자산' || b === '순자산') {
+                bsItems.push({ category: b, product: b, amount: eRaw });
+              } else if (c || eRaw > 0) {
+                bsItems.push({ category: currBsCat || '기타', product: c || currBsCat, amount: eRaw });
+              }
+            }
+          } else if (section === 'INS') {
+            if (['금융사', '사용자가 보유한 보험상품 현황을 분석합니다.', '총계', ''].includes(b)) continue;
+            const paid = parseFloat(String(row[5] || 0).replace(/,/g, '')) || 0;
+            insItems.push({
+              company: b,
+              name: String(row[2] || '').trim(),
+              status: String(row[4] || '').trim(),
+              paidTotal: paid
+            });
+          } else if (section === 'INV') {
+            if (['투자상품종류', '사용자가 보유한 투자상품 현황을 분석합니다.', '총계', ''].includes(b)) continue;
+            const princ = parseFloat(String(row[5] || 0).replace(/,/g, '')) || 0;
+            const val = parseFloat(String(row[6] || 0).replace(/,/g, '')) || 0;
+            const ret = parseFloat(String(row[7] || 0).replace(/,/g, '')) || 0;
+            invItems.push({
+              type: b,
+              company: String(row[2] || '').trim(),
+              name: String(row[3] || '').trim(),
+              principal: princ,
+              valuation: val,
+              returnRate: ret
+            });
+          }
+        }
+
+        const assetSum = bsItems.filter(i => !['총자산', '순자산', '부채'].includes(i.category))
+                                .reduce((s, i) => s + i.amount, 0);
+        bsItems.forEach(i => {
+          if (['총자산', '순자산'].includes(i.category)) i.amount = assetSum;
+        });
+
+        if (!window.FINANCE_DATA.annualSummaries) window.FINANCE_DATA.annualSummaries = {};
+        window.FINANCE_DATA.annualSummaries[targetYear] = {
+          customer: {
+            name: String(sumRows[5]?.[1] || '한영흠').trim(),
+            gender: String(sumRows[5]?.[2] || '남').trim(),
+            age: parseInt(sumRows[5]?.[3], 10) || 41,
+            creditScore: parseInt(sumRows[5]?.[4], 10) || 1000
+          },
+          cashFlow: cfItems,
+          balanceSheet: bsItems,
+          insurance: insItems,
+          investments: invItems
+        };
+      }
+
+      // Recompute metadata
+      const activeMonths = {};
+      const allYears = Array.from(new Set(combinedTxs.map(t => t.year).filter(Boolean))).sort();
+      allYears.forEach(y => {
+        const ymSet = new Set(combinedTxs.filter(t => t.year === y).map(t => t.yearMonth));
+        activeMonths[y] = ymSet.size;
+      });
+
+      const merchTotals = {};
+      const merchCounts = {};
+      combinedTxs.filter(t => t.type === '지출' && t.merchant).forEach(t => {
+        merchTotals[t.merchant] = (merchTotals[t.merchant] || 0) + Math.abs(t.amount);
+        merchCounts[t.merchant] = (merchCounts[t.merchant] || 0) + 1;
+      });
+
+      const topMerchants = Object.keys(merchTotals).map(m => ({
+        name: m,
+        total: Math.round(merchTotals[m]),
+        count: merchCounts[m]
+      })).sort((a, b) => b.total - a.total).slice(0, 50);
+
+      window.FINANCE_DATA.metadata.availableYears = allYears;
+      window.FINANCE_DATA.metadata.activeMonths = activeMonths;
+      window.FINANCE_DATA.topMerchants = topMerchants;
+      window.FINANCE_DATA.metadata.lastUpdated = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
+      // Save to localStorage
+      localStorage.setItem('SOL_FINANCE_DATA_OVERRIDE', JSON.stringify(window.FINANCE_DATA));
+
+      // Refresh UI
+      bootstrap();
+
+      setStatus(`
+        <div style="font-weight:700; margin-bottom:4px;">🎉 데이터 동기화 완료!</div>
+        <div>• 대상 연도: <strong>${targetYear}년</strong></div>
+        <div>• 신규 추가 거래내역: <strong>${newCount}건</strong> (총 거래내역: ${combinedTxs.length.toLocaleString('ko-KR')}건)</div>
+        <div>• 대시보드 차트 및 브라우저 로컬 저장소에 즉시 반영되었습니다.</div>
+      `, 'success');
+
+    } catch (err) {
+      console.error(err);
+      setStatus(`❌ 오류 발생: ${err.message}`, 'error');
+    } finally {
+      if (btnProcess) btnProcess.disabled = false;
     }
   }
 
