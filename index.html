@@ -716,6 +716,18 @@
         </div>
       </div>
 
+      <!-- Google Sheet Webhook Sync Setting -->
+      <div style="margin-bottom:14px; padding:10px 12px; background:rgba(0, 70, 255, 0.04); border:1px solid rgba(0, 70, 255, 0.15); border-radius:8px;">
+        <label style="display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:700; color:var(--color-primary-600); margin-bottom:4px;">
+          <span>구글 시트 실시간 자동 연동 Webhook URL (1회 등록 시 영구 연동)</span>
+          <span style="font-size:10px; font-weight:400; color:var(--text-tertiary);">Apps Script 웹 앱</span>
+        </label>
+        <input type="url" id="googleSheetWebhookInput" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%; padding:7px 10px; border:1px solid var(--border-default); border-radius:6px; font-size:11px; font-family:monospace;">
+        <div style="font-size:10px; color:var(--text-tertiary); margin-top:4px;">
+          구글 시트 [확장 프로그램 &gt; Apps Script]에 제공된 스크립트 배포 URL을 입력하면, ZIP 등록 시 구글 시트가 100% 자동 업데이트됩니다.
+        </div>
+      </div>
+
       <!-- Action Button -->
       <div style="display:flex; gap:10px; margin-bottom:14px;">
         <button class="btn-sol-primary" id="btnProcessUpload" style="flex:1; padding:11px; justify-content:center; font-size:13px; font-weight:700;">

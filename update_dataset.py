@@ -348,7 +348,26 @@ def sync_dataset(input_file, password='1814', push_git=False):
 
     print("💾 finance_data.json 및 finance_data.js 저장 완료!")
 
-    # 6. Push to Git if requested
+    # 6. Automatic Google Sheet sync if requested or configured
+    webhook_url = os.environ.get('GOOGLE_SHEET_WEBHOOK_URL')
+    if webhook_url and truly_new_txs:
+        try:
+            import urllib.request
+            print(f"📡 구글 스프레드시트 Webhook에 신규 {len(truly_new_txs)}건 자동 전송 중...")
+            payload_data = json.dumps({
+                'targetYear': target_year,
+                'transactions': [[
+                    t['date'], t['time'], t['type'], t['category'], t['subcategory'],
+                    t['merchant'], t['amount'], t['currency'], t['payment'], t['memo']
+                ] for t in truly_new_txs]
+            }).encode('utf-8')
+            req = urllib.request.Request(webhook_url, data=payload_data, headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                print("✅ 구글 스프레드시트 실시간 동기화 완료!")
+        except Exception as e:
+            print(f"⚠️ 구글 시트 Webhook 전송 실패: {e}")
+
+    # 7. Push to Git if requested
     if push_git:
         commit_msg = f"feat: update financial dataset via zip upload ({target_year} data, +{len(truly_new_txs)} txs)"
         print(f"🚀 GitHub 배포 실행...")
@@ -364,6 +383,19 @@ if __name__ == '__main__':
     parser.add_argument('file', help="Path to ZIP export or XLSX file")
     parser.add_argument('--password', '-p', default='1814', help="ZIP password (default: 1814)")
     parser.add_argument('--push', action='store_true', help="Commit and push changes to GitHub Pages")
+    parser.add_argument('--sync-gsheet', action='store_true', help="Directly sync to Google Sheet via OAuth")
+    parser.add_argument('--webhook', help="Google Apps Script Webhook URL for Google Sheet auto-sync")
     args = parser.parse_args()
 
+    if args.webhook:
+        os.environ['GOOGLE_SHEET_WEBHOOK_URL'] = args.webhook
+
     sync_dataset(args.file, password=args.password, push_git=args.push)
+
+    if args.sync_gsheet:
+        try:
+            from sync_google_sheets_oauth import push_to_google_sheet
+            push_to_google_sheet()
+        except Exception as e:
+            print(f"⚠️ Google Sheets OAuth 직접 연동 실패: {e}")
+

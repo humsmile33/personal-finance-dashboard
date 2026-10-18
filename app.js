@@ -2955,6 +2955,14 @@
       });
     }
 
+    const webhookInput = document.getElementById('googleSheetWebhookInput');
+    if (webhookInput) {
+      webhookInput.value = localStorage.getItem('SOL_GOOGLE_SHEET_WEBHOOK_URL') || '';
+      webhookInput.addEventListener('change', () => {
+        localStorage.setItem('SOL_GOOGLE_SHEET_WEBHOOK_URL', webhookInput.value.trim());
+      });
+    }
+
     function setSelectedFile(file) {
       selectedUploadFile = file;
       if (fileInfo && fileNameEl && fileSizeEl) {
@@ -3358,6 +3366,32 @@
       // Save to localStorage
       localStorage.setItem('SOL_FINANCE_DATA_OVERRIDE', JSON.stringify(window.FINANCE_DATA));
 
+      // Check if Google Sheet Webhook is configured for direct real-time sync
+      const webhookUrl = (document.getElementById('googleSheetWebhookInput')?.value || localStorage.getItem('SOL_GOOGLE_SHEET_WEBHOOK_URL') || '').trim();
+      let webhookStatusText = '';
+      if (webhookUrl && newCount > 0) {
+        setStatus(`📡 구글 스프레드시트에 신규 ${newCount}건 실시간 자동 전송 중...`);
+        try {
+          const payloadRows = newTxs.slice(0, newCount).map(t => [
+            t.date, t.time, t.type, t.category, t.subcategory,
+            t.merchant, t.amount, t.currency, t.payment, t.memo
+          ]);
+          await fetch(webhookUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              targetYear: targetYear,
+              transactions: payloadRows
+            })
+          });
+          webhookStatusText = '<div style="color:#059669; font-weight:700;">• 구글 스프레드시트 온라인 클라우드 연동 완료!</div>';
+        } catch (e) {
+          console.warn('Webhook sync error:', e);
+          webhookStatusText = `<div style="color:var(--color-danger);">• 구글 시트 웹훅 전송 오류: ${e.message}</div>`;
+        }
+      }
+
       // Refresh UI
       bootstrap();
 
@@ -3366,6 +3400,7 @@
         <div>• 대상 연도: <strong>${targetYear}년</strong></div>
         <div>• 신규 추가 거래내역: <strong>${newCount}건</strong> (총 거래내역: ${combinedTxs.length.toLocaleString('ko-KR')}건)</div>
         <div>• 대시보드 차트 및 브라우저 로컬 저장소에 즉시 반영되었습니다.</div>
+        ${webhookStatusText}
       `, 'success');
 
     } catch (err) {
