@@ -106,6 +106,90 @@
         });
         ctx.restore();
       }
+
+      // 3. Draw Column Total Value on top of each vertical bar (Annotation 1)
+      const barDatasets = chart.data.datasets.filter(d => (d.type === 'bar' || !d.type) && d.yAxisID !== 'yRate');
+      if (barDatasets.length > 0 && scales.x && scales.y) {
+        const numCols = chart.data.labels ? chart.data.labels.length : 0;
+        ctx.save();
+        ctx.font = 'bold 11px Pretendard, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = '#0F172A';
+
+        for (let i = 0; i < numCols; i++) {
+          let colSum = 0;
+          barDatasets.forEach(d => {
+            const v = d.data[i];
+            if (v !== null && v !== undefined && !isNaN(v)) {
+              colSum += v;
+            }
+          });
+
+          if (colSum > 0) {
+            const barX = scales.x.getPixelForTick(i);
+            const barY = scales.y.getPixelForValue(colSum);
+            const text = Math.round(colSum).toLocaleString('ko-KR');
+
+            // Draw crisp white halo around text to ensure readability above any bar or gridline
+            const labelY = Math.max(top + 14, barY - 4);
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 3;
+            ctx.strokeText(text, barX, labelY);
+            ctx.fillText(text, barX, labelY);
+          }
+        }
+        ctx.restore();
+      }
+    }
+  };
+
+  // Custom Chart.js Plugin: Draws Data Value at the end of each horizontal bar (Annotation 2)
+  const horizontalBarDataLabelsPlugin = {
+    id: 'horizontalBarDataLabelsPlugin',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      if (!scales || !scales.x || !scales.y || !chartArea) return;
+      const { left, right } = chartArea;
+
+      const meta = chart.getDatasetMeta(0);
+      const dataset = chart.data.datasets[0];
+      if (!dataset || !dataset.data) return;
+
+      ctx.save();
+      ctx.font = 'bold 11px Pretendard, sans-serif';
+      ctx.textBaseline = 'middle';
+
+      dataset.data.forEach((val, idx) => {
+        if (val !== null && val !== undefined && !isNaN(val) && val > 0) {
+          const text = Math.round(val).toLocaleString('ko-KR');
+          const textWidth = ctx.measureText(text).width;
+          const barEl = meta && meta.data ? meta.data[idx] : null;
+          const barX = barEl ? barEl.x : scales.x.getPixelForValue(val);
+          const barY = barEl ? barEl.y : scales.y.getPixelForTick(idx);
+
+          let labelX = barX + 6;
+          let textColor = '#0F172A';
+          let useHalo = true;
+
+          // If text extends beyond chart right margin, draw inside bar with white text
+          if (labelX + textWidth > right - 4) {
+            labelX = Math.max(left + 6, barX - textWidth - 6);
+            textColor = '#FFFFFF';
+            useHalo = false;
+          }
+
+          ctx.textAlign = 'left';
+          ctx.fillStyle = textColor;
+          if (useHalo) {
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 3;
+            ctx.strokeText(text, labelX, barY);
+          }
+          ctx.fillText(text, labelX, barY);
+        }
+      });
+      ctx.restore();
     }
   };
 
@@ -1817,6 +1901,7 @@
     const minR = validRates.length ? Math.min(...validRates) : -25;
     const maxR = validRates.length ? Math.max(...validRates) : 25;
     const bound = Math.ceil(Math.max(Math.abs(minR), Math.abs(maxR), 25) * 1.25 / 10) * 10;
+    const maxYTotal = Math.max(...Object.values(yearlyTotals), 1);
 
     charts.yoyDetailCombo = new Chart(ctx, {
       type: 'bar',
@@ -1853,6 +1938,7 @@
             stacked: true,
             position: 'left',
             grid: { color: COLORS.border },
+            suggestedMax: Math.ceil(maxYTotal * 1.15),
             ticks: { callback: val => formatCompactKRW(val) }
           },
           yRate: {
@@ -2247,6 +2333,7 @@
     const minR = validRates.length ? Math.min(...validRates) : -25;
     const maxR = validRates.length ? Math.max(...validRates) : 25;
     const bound = Math.ceil(Math.max(Math.abs(minR), Math.abs(maxR), 25) * 1.25 / 10) * 10;
+    const maxQTotal = Math.max(...Object.values(quarterlyTotals), 1);
 
     charts.yoyDetailCombo = new Chart(ctx, {
       type: 'bar',
@@ -2283,6 +2370,7 @@
             stacked: true,
             position: 'left',
             grid: { color: COLORS.border },
+            suggestedMax: Math.ceil(maxQTotal * 1.15),
             ticks: { callback: val => formatCompactKRW(val) }
           },
           yRate: {
@@ -2526,6 +2614,7 @@
             borderRadius: 4
           }]
         },
+        plugins: [horizontalBarDataLabelsPlugin],
         options: {
           indexAxis: 'y',
           responsive: true,
@@ -2550,7 +2639,11 @@
             tooltip: { callbacks: { label: ctx => `${ctx.label}: ${formatKRW(ctx.raw)} (클릭 시 소분류 드릴다운)` } }
           },
           scales: {
-            x: { grid: { color: COLORS.border }, ticks: { callback: val => formatCompactKRW(val) } },
+            x: { 
+              grid: { color: COLORS.border }, 
+              suggestedMax: Math.ceil(Math.max(...topVals, 1) * 1.15),
+              ticks: { callback: val => formatCompactKRW(val) } 
+            },
             y: { grid: { display: false } }
           }
         }
@@ -2592,6 +2685,7 @@
             borderRadius: 4
           }]
         },
+        plugins: [horizontalBarDataLabelsPlugin],
         options: {
           indexAxis: 'y',
           responsive: true,
@@ -2601,7 +2695,11 @@
             tooltip: { callbacks: { label: ctx => `${ctx.label}: ${formatKRW(ctx.raw)}` } }
           },
           scales: {
-            x: { grid: { color: COLORS.border }, ticks: { callback: val => formatCompactKRW(val) } },
+            x: { 
+              grid: { color: COLORS.border }, 
+              suggestedMax: Math.ceil(Math.max(...subVals, 1) * 1.15),
+              ticks: { callback: val => formatCompactKRW(val) } 
+            },
             y: { grid: { display: false } }
           }
         }
